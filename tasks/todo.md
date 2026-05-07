@@ -1,0 +1,47 @@
+- [x] Analisis kebutuhan scanner barcode realtime dari user.
+- [x] Implementasi UI scanner + form autofill dari API lokal.
+- [x] Tambahkan permission Android/iOS untuk camera + HTTP lokal.
+- [x] Jalankan validasi (`flutter pub get` dan `flutter analyze`).
+- [x] Tulis review hasil implementasi.
+- [x] Refactor arsitektur UI menjadi shell menu profesional.
+- [x] Tambahkan bottom navigation lengkap + tombol kamera tengah.
+- [x] Buat halaman menu: Home, History, Manual, Settings, Profile.
+- [x] Pertahankan flow scanner realtime + auto fetch API + autofill.
+- [x] Jalankan validasi redesign (`flutter analyze`).
+- [x] Implementasi motion adaptif untuk UX premium namun aman performa.
+- [x] Tambahkan efek visual scanner (pulse frame + feedback sukses).
+- [x] Tambahkan animasi transisi tab, indikator aktif, dan FAB scale interaction.
+- [x] Upgrade history dengan filter `Today/All`, animasi list, dan swipe delete.
+- [x] Tambahkan highlight animasi pada field auto-fill.
+- [x] Jalankan validasi akhir upgrade premium (`flutter analyze`).
+- [x] Refactor ke struktur folder feature-first (`app/core/features`).
+- [x] Pecah `main.dart` menjadi entrypoint tipis + modul bootstrap app.
+- [x] Migrasi state UI scanner ke `provider` (`ChangeNotifier`).
+- [x] Pisahkan API service, state, model, dan widget reusable.
+- [x] Validasi refactor arsitektur (`flutter analyze`).
+
+## Review
+- Scanner realtime aktif via kamera menggunakan `mobile_scanner`.
+- Saat barcode terbaca, aplikasi otomatis hit API lokal `GET /api/gcc/cutting/list?barcode=...`.
+- Field form terisi otomatis: `wo`, `style`, `meja`, `warna`, `size`, `noIkat`, `noUrut`, `season`, `country`, `placing`.
+- Android sudah di-set untuk akses HTTP lokal (`usesCleartextTraffic`) + permission kamera/internet.
+- iOS ditambahkan izin kamera dan ATS agar bisa akses endpoint HTTP lokal.
+- Validasi berhasil: `flutter pub get` sukses, `flutter analyze` tidak ada issue.
+- UI di-redesign jadi gaya modern biru-putih dengan hierarchy visual lebih rapi (hero card, info card, spacing konsisten).
+- Navigasi bawah sudah lengkap dan profesional: `Home`, `History`, `Manual`, `Settings`, `Profile`, serta FAB kamera di tengah.
+- Scanner sekarang berbasis aksi klik kamera (AppBar action + FAB) yang membuka panel scanner realtime.
+- Riwayat scan tersimpan lokal di sesi berjalan, bisa klik ulang item history untuk fetch data kembali.
+- Fondasi `MotionTokens` ditambahkan untuk animasi adaptif (normal/reduced) agar tetap nyaman di device menengah.
+- Home dashboard ditingkatkan dengan hero card animatif (fade + slide) dan CTA scanner yang terasa interaktif.
+- Halaman scanner ditingkatkan dengan overlay frame scan plus pulse effect ringan untuk pengalaman lebih premium.
+- Setelah scan sukses, user mendapat feedback visual cepat via snackbar floating.
+- Navigasi antar menu kini menggunakan `AnimatedSwitcher` agar perpindahan halaman lebih halus.
+- Form data kini memakai highlight sementara saat auto-fill agar perubahan data lebih mudah terbaca operator.
+- Riwayat kini punya filter `Today/All`, animasi kemunculan item, dan aksi swipe untuk hapus.
+- Validasi akhir berhasil tanpa issue: `flutter analyze` no issues found.
+- Struktur kode sekarang modular: `lib/app`, `lib/core`, `lib/features/scanner/{data,state,presentation}`.
+- `main.dart` sudah menjadi entrypoint tipis yang hanya memanggil `ScannerMainApp`.
+- State lokal berbasis `setState` utama sudah dipindah ke `ScannerState` dengan `provider`.
+- Logika HTTP dipisah ke `scanner_api_service.dart` agar business logic lebih rapi dan testable.
+- Komponen presentasi dipisah ke page + widgets (`scanner_shell_page`, `scanner_overlay_sheet`, `menu_info_card`, `data_field_tile`).
+- Validasi refactor selesai: `flutter analyze` tidak ada issue.
