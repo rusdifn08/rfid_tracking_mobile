@@ -119,4 +119,141 @@ class ScannerApiService {
       throw Exception(_messageFromBody(decoded, 'Registrasi gagal.'));
     }
   }
+
+  /// POST `/api/gcc/cutting/output` — mencatat output bundle (RFID + NIK).
+  Future<Map<String, dynamic>> postCuttingBundleOutput({
+    required String rfidBundles,
+    required String nik,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/output');
+    final response = await _client.post(
+      uri,
+      headers: <String, String>{
+        ..._baseHeaders,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(<String, String>{
+        'rfid_bundles': rfidBundles,
+        'nik': nik,
+      }),
+    );
+
+    final Map<String, dynamic>? decoded = _tryDecodeMap(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'POST output bundle gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+
+    final dynamic code = decoded['code'];
+    final String? status = decoded['status']?.toString();
+    if (code != 200 || status != 'success') {
+      throw Exception(_messageFromBody(decoded, 'Mencatat output bundle gagal.'));
+    }
+
+    final dynamic data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    throw Exception('Data response tidak valid.');
+  }
+
+  /// GET `/api/gcc/cutting/qc/qty` untuk mengambil qty output by RFID bundle.
+  Future<Map<String, dynamic>> fetchQualityControlQty({
+    required String rfidBundles,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/qc/qty');
+    final request = http.Request('GET', uri)
+      ..headers.addAll(<String, String>{
+        ..._baseHeaders,
+        'Content-Type': 'application/json',
+      })
+      ..body = jsonEncode(<String, String>{'rfid_bundles': rfidBundles});
+
+    final streamed = await _client.send(request);
+    final response = await http.Response.fromStream(streamed);
+    final Map<String, dynamic>? decoded = _tryDecodeMap(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'GET qty QC gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+
+    final dynamic code = decoded['code'];
+    final String? status = decoded['status']?.toString();
+    if (code != 200 || status != 'success') {
+      throw Exception(_messageFromBody(decoded, 'Qty output tidak ditemukan.'));
+    }
+
+    final dynamic data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    throw Exception('Data response tidak valid.');
+  }
+
+  /// POST `/api/gcc/cutting/qc` untuk submit hasil QC.
+  Future<void> postQualityControlResult({
+    required String rfidBundles,
+    required int reject,
+    required int repair,
+    required int good,
+    required String nik,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/qc');
+    final response = await _client.post(
+      uri,
+      headers: <String, String>{
+        ..._baseHeaders,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'rfid_bundles': rfidBundles,
+        'reject': reject,
+        'repair': repair,
+        'good': good,
+        'nik': nik,
+      }),
+    );
+
+    final Map<String, dynamic>? decoded = _tryDecodeMap(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'POST quality control gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+    final dynamic code = decoded['code'];
+    final String? status = decoded['status']?.toString();
+    if (code != 200 || status != 'success') {
+      throw Exception(_messageFromBody(decoded, 'Submit quality control gagal.'));
+    }
+  }
 }

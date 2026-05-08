@@ -7,6 +7,40 @@ enum AppMenu { home, history, manual, settings, profile }
 enum HistoryFilter { today, all }
 enum NoticeType { success, error }
 
+class StationScanEntry {
+  const StationScanEntry({
+    required this.rfid,
+    required this.workOrder,
+    required this.qty,
+    required this.scannedAt,
+  });
+
+  final String rfid;
+  final String workOrder;
+  final int qty;
+  final DateTime scannedAt;
+}
+
+class QcStationScanEntry {
+  const QcStationScanEntry({
+    required this.rfid,
+    required this.workOrder,
+    required this.qty,
+    required this.good,
+    required this.repair,
+    required this.reject,
+    required this.scannedAt,
+  });
+
+  final String rfid;
+  final String workOrder;
+  final int qty;
+  final int good;
+  final int repair;
+  final int reject;
+  final DateTime scannedAt;
+}
+
 class AppNotice {
   const AppNotice({
     required this.id,
@@ -40,6 +74,11 @@ class ScannerState extends ChangeNotifier {
   };
 
   final List<ScanHistoryEntry> _scanHistory = <ScanHistoryEntry>[];
+  final List<StationScanEntry> _bundleScans = <StationScanEntry>[];
+  // Menjaga kompatibilitas saat hot-reload dari tipe lama (StationScanEntry).
+  final List<Object> _qualityControlScans = <Object>[];
+  final List<StationScanEntry> _supermarketScans = <StationScanEntry>[];
+  final List<StationScanEntry> _supplySewingScans = <StationScanEntry>[];
   final Set<String> highlightedFields = <String>{};
 
   bool isFetching = false;
@@ -58,8 +97,44 @@ class ScannerState extends ChangeNotifier {
   HistoryFilter historyFilter = HistoryFilter.today;
 
   List<ScanHistoryEntry> get scanHistory => List.unmodifiable(_scanHistory);
+  List<StationScanEntry> get bundleScans => List.unmodifiable(_bundleScans);
+  List<QcStationScanEntry> get qualityControlScans => List.unmodifiable(
+    _qualityControlScans.map((entry) {
+      if (entry is QcStationScanEntry) {
+        return entry;
+      }
+      if (entry is StationScanEntry) {
+        // Data lama sebelum refactor QC split: asumsikan semuanya Good.
+        return QcStationScanEntry(
+          rfid: entry.rfid,
+          workOrder: entry.workOrder,
+          qty: entry.qty,
+          good: entry.qty,
+          repair: 0,
+          reject: 0,
+          scannedAt: entry.scannedAt,
+        );
+      }
+      return QcStationScanEntry(
+        rfid: '',
+        workOrder: 'UNKNOWN',
+        qty: 0,
+        good: 0,
+        repair: 0,
+        reject: 0,
+        scannedAt: DateTime.now(),
+      );
+    }).where((entry) => entry.rfid.isNotEmpty),
+  );
+  List<StationScanEntry> get supermarketScans =>
+      List.unmodifiable(_supermarketScans);
+  List<StationScanEntry> get supplySewingScans =>
+      List.unmodifiable(_supplySewingScans);
 
   bool get hasResultData => fields.values.any((value) => value.isNotEmpty);
+  Set<String> get scannedBundleRfids => _bundleScans.map((e) => e.rfid).toSet();
+  bool hasBundleScanRfid(String rfid) =>
+      _bundleScans.any((entry) => entry.rfid == rfid.trim());
 
   List<ScanHistoryEntry> get filteredHistory {
     if (historyFilter == HistoryFilter.all) {
@@ -140,7 +215,7 @@ class ScannerState extends ChangeNotifier {
         );
       }
     } catch (error) {
-      errorMessage = _userFacingError(error);
+      errorMessage = userFacingError(error);
       _pushNotice(errorMessage!, type: NoticeType.error);
       notifyListeners();
     } finally {
@@ -200,7 +275,7 @@ class ScannerState extends ChangeNotifier {
       }
       ok = true;
     } catch (error) {
-      registerMessage = _userFacingError(error);
+      registerMessage = userFacingError(error);
       if (pushErrorNotice) {
         _pushNotice(registerMessage!, type: NoticeType.error);
       }
@@ -228,6 +303,234 @@ class ScannerState extends ChangeNotifier {
 
   String getField(String key) => fields[key] ?? '';
 
+  /// Memanggil POST `/api/gcc/cutting/output` lalu menambahkan baris ke dashboard Bundle.
+  Future<void> submitBundleCuttingOutput({
+    required String rfidBundles,
+    required String nik,
+  }) async {
+    final cleanRfid = rfidBundles.trim();
+    final cleanNik = nik.trim();
+    if (cleanRfid.isEmpty) {
+      throw Exception('RFID bundle wajib diisi.');
+    }
+    if (cleanNik.isEmpty) {
+      throw Exception('NIK wajib diisi.');
+    }
+    if (_bundleScans.any((entry) => entry.rfid == cleanRfid)) {
+      throw Exception('RFID sudah ada di tabel Bundle.');
+    }
+
+    final data = await _apiService.postCuttingBundleOutput(
+      rfidBundles: cleanRfid,
+      nik: cleanNik,
+    );
+
+    final wo = (data['wo'] ?? '').toString().trim();
+    final qtyRaw = data['qty_output'] ?? data['qty_bundles'];
+    final qty = qtyRaw is int
+        ? qtyRaw
+        : int.tryParse(qtyRaw?.toString().trim() ?? '') ?? 10;
+
+    DateTime scannedAt = DateTime.now();
+    final outputTime = data['output_time'];
+    if (outputTime != null && outputTime.toString().trim().isNotEmpty) {
+      final parsed = DateTime.tryParse(outputTime.toString().trim());
+      if (parsed != null) {
+        scannedAt = parsed;
+      }
+    }
+
+    _bundleScans.insert(
+      0,
+      StationScanEntry(
+        rfid: cleanRfid,
+        workOrder: wo.isEmpty ? '-' : wo,
+        qty: qty < 1 ? 10 : qty,
+        scannedAt: scannedAt,
+      ),
+    );
+
+    final barcode = data['barcode']?.toString().trim();
+    if (barcode != null && barcode.isNotEmpty) {
+      lastBarcode = barcode;
+    }
+    lastRegisteredRfid = cleanRfid;
+    notifyListeners();
+  }
+
+  bool addBundleStationScan({
+    required String rfid,
+    String workOrder = 'LIVE-BUNDLE',
+    int qty = 10,
+  }) {
+    final clean = rfid.trim();
+    if (clean.isEmpty || _bundleScans.any((entry) => entry.rfid == clean)) {
+      return false;
+    }
+    _bundleScans.insert(
+      0,
+      StationScanEntry(
+        rfid: clean,
+        workOrder: workOrder,
+        qty: qty,
+        scannedAt: DateTime.now(),
+      ),
+    );
+    lastRegisteredRfid = clean;
+    notifyListeners();
+    return true;
+  }
+
+  bool addQualityControlScan({
+    required String rfid,
+    String workOrder = 'LIVE-QC',
+    int qty = 10,
+    required int good,
+    required int repair,
+    required int reject,
+  }) {
+    final clean = rfid.trim();
+    if (good < 0 || repair < 0 || reject < 0 || good + repair + reject != qty) {
+      return false;
+    }
+    if (
+      clean.isEmpty ||
+      qualityControlScans.any((entry) => entry.rfid == clean)
+    ) {
+      return false;
+    }
+    _qualityControlScans.insert(
+      0,
+      QcStationScanEntry(
+        rfid: clean,
+        workOrder: workOrder,
+        qty: qty,
+        good: good,
+        repair: repair,
+        reject: reject,
+        scannedAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
+  Future<int> fetchQualityControlQty({required String rfidBundles}) async {
+    final cleanRfid = rfidBundles.trim();
+    if (cleanRfid.isEmpty) {
+      throw Exception('RFID bundle wajib diisi.');
+    }
+    final data = await _apiService.fetchQualityControlQty(rfidBundles: cleanRfid);
+    final rawQty = data['qty_output'];
+    final qty = rawQty is int
+        ? rawQty
+        : int.tryParse(rawQty?.toString().trim() ?? '');
+    if (qty == null || qty < 0) {
+      throw Exception('Qty output tidak valid dari API.');
+    }
+    return qty;
+  }
+
+  Future<void> submitQualityControlResult({
+    required String rfidBundles,
+    required int qty,
+    required int good,
+    required int repair,
+    required int reject,
+    required String nik,
+  }) async {
+    final cleanRfid = rfidBundles.trim();
+    final cleanNik = nik.trim();
+    if (cleanRfid.isEmpty) {
+      throw Exception('RFID bundle wajib diisi.');
+    }
+    if (cleanNik.isEmpty) {
+      throw Exception('NIK wajib diisi.');
+    }
+    if (qty < 0 || good < 0 || repair < 0 || reject < 0) {
+      throw Exception('Nilai Qty QC tidak valid.');
+    }
+    if (good + repair + reject != qty) {
+      throw Exception('Total Good + Repair + Reject harus sama dengan Qty Bundle.');
+    }
+    if (qualityControlScans.any((entry) => entry.rfid == cleanRfid)) {
+      throw Exception('RFID sudah ada di tabel Quality Control.');
+    }
+
+    await _apiService.postQualityControlResult(
+      rfidBundles: cleanRfid,
+      reject: reject,
+      repair: repair,
+      good: good,
+      nik: cleanNik,
+    );
+
+    _qualityControlScans.insert(
+      0,
+      QcStationScanEntry(
+        rfid: cleanRfid,
+        workOrder: 'LIVE-QC',
+        qty: qty,
+        good: good,
+        repair: repair,
+        reject: reject,
+        scannedAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+  }
+
+  bool addSupermarketScan({
+    required String rfid,
+    String workOrder = 'LIVE-SUPERMARKET',
+    int qty = 10,
+  }) {
+    final clean = rfid.trim();
+    if (clean.isEmpty) {
+      return false;
+    }
+    if (
+      _supermarketScans.any(
+        (entry) => entry.rfid == clean && entry.workOrder == workOrder,
+      )
+    ) {
+      return false;
+    }
+    _supermarketScans.insert(
+      0,
+      StationScanEntry(
+        rfid: clean,
+        workOrder: workOrder,
+        qty: qty,
+        scannedAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
+  bool addSupplySewingScan({
+    required String rfid,
+    String workOrder = 'LIVE-SUPPLY',
+    int qty = 10,
+  }) {
+    final clean = rfid.trim();
+    if (clean.isEmpty || _supplySewingScans.any((entry) => entry.rfid == clean)) {
+      return false;
+    }
+    _supplySewingScans.insert(
+      0,
+      StationScanEntry(
+        rfid: clean,
+        workOrder: workOrder,
+        qty: qty,
+        scannedAt: DateTime.now(),
+      ),
+    );
+    notifyListeners();
+    return true;
+  }
+
   void _fillFields(Map<String, dynamic> item, String barcode) {
     lastBarcode = barcode;
     fields['wo'] = _toValue(item['wo']);
@@ -249,7 +552,7 @@ class ScannerState extends ChangeNotifier {
 
   String _toValue(dynamic value) => value == null ? '' : value.toString();
 
-  static String _userFacingError(Object error) {
+  static String userFacingError(Object error) {
     final s = error.toString();
     if (s.startsWith('Exception: ')) {
       return s.substring('Exception: '.length);

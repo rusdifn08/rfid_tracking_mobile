@@ -143,5 +143,153 @@ void main() {
         throwsA(isA<Exception>()),
       );
     });
+
+    test('postCuttingBundleOutput mengirim body rfid_bundles dan nik', () async {
+      late Uri capturedUri;
+      late Map<String, String> capturedHeaders;
+      late Map<String, dynamic> capturedBody;
+      final client = MockClient((http.Request request) async {
+        capturedUri = request.url;
+        capturedHeaders = request.headers;
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'Berhasil mencatat Output Bundle',
+            'data': <String, dynamic>{
+              'wo': 'WO1',
+              'rfid_bundles': 'RFID-Z',
+              'qty_output': '10',
+            },
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        apiKey: 'test-key',
+        client: client,
+      );
+
+      final data = await service.postCuttingBundleOutput(
+        rfidBundles: 'RFID-Z',
+        nik: '12345',
+      );
+
+      expect(capturedUri.path, '/api/gcc/cutting/output');
+      expect(capturedHeaders['rfid-key'], 'test-key');
+      expect(capturedHeaders['Content-Type'], 'application/json');
+      expect(capturedBody['rfid_bundles'], 'RFID-Z');
+      expect(capturedBody['nik'], '12345');
+      expect(data['wo'], 'WO1');
+    });
+
+    test('postCuttingBundleOutput melempar error saat status gagal', () async {
+      final client = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 400,
+            'status': 'error',
+            'message': 'RFID tidak dikenal',
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      expect(
+        () => service.postCuttingBundleOutput(
+          rfidBundles: 'X',
+          nik: '1',
+        ),
+        throwsA(
+          predicate<Object>(
+            (e) => e.toString().contains('RFID tidak dikenal'),
+          ),
+        ),
+      );
+    });
+
+    test('fetchQualityControlQty mengirim GET body rfid_bundles', () async {
+      late http.BaseRequest capturedRequest;
+      final client = MockClient((http.Request request) async {
+        capturedRequest = request;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'Qty output berhasil ditemukan.',
+            'data': <String, dynamic>{
+              'id_bundles': 12,
+              'rfid_bundles': '0013468151',
+              'qty_output': 10,
+            },
+          }),
+          200,
+        );
+      });
+
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        apiKey: 'test-key',
+        client: client,
+      );
+
+      final data = await service.fetchQualityControlQty(
+        rfidBundles: '0013468151',
+      );
+
+      final request = capturedRequest as http.Request;
+      expect(request.method, 'GET');
+      expect(request.url.path, '/api/gcc/cutting/qc/qty');
+      expect(request.headers['rfid-key'], 'test-key');
+      expect(request.headers['Content-Type'], 'application/json');
+      expect(
+        jsonDecode(request.body)['rfid_bundles'],
+        '0013468151',
+      );
+      expect(data['qty_output'], 10);
+    });
+
+    test('postQualityControlResult mengirim payload QC yang benar', () async {
+      late Uri capturedUri;
+      late Map<String, dynamic> capturedBody;
+      final client = MockClient((http.Request request) async {
+        capturedUri = request.url;
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'ok',
+          }),
+          200,
+        );
+      });
+
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      await service.postQualityControlResult(
+        rfidBundles: 'RF-01',
+        reject: 1,
+        repair: 2,
+        good: 7,
+        nik: '92300014',
+      );
+
+      expect(capturedUri.path, '/api/gcc/cutting/qc');
+      expect(capturedBody['rfid_bundles'], 'RF-01');
+      expect(capturedBody['reject'], 1);
+      expect(capturedBody['repair'], 2);
+      expect(capturedBody['good'], 7);
+      expect(capturedBody['nik'], '92300014');
+    });
   });
 }
