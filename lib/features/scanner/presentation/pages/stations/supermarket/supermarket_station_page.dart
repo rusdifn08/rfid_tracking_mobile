@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../../auth/state/auth_state.dart';
 import '../../../mock/station_dashboard_models.dart';
 import '../../../../state/scanner_state.dart';
 import '../../../widgets/shell/tracking_rfid_station_dialog.dart';
@@ -9,18 +10,36 @@ import '../../../widgets/station_dashboard/hourly_scan_chart_card.dart';
 import '../../../widgets/station_dashboard/station_page_scaffold.dart';
 import '../../../widgets/station_dashboard/station_summary_cards.dart';
 
-class SupermarketStationPage extends StatelessWidget {
+class SupermarketStationPage extends StatefulWidget {
   const SupermarketStationPage({super.key});
+
+  @override
+  State<SupermarketStationPage> createState() => _SupermarketStationPageState();
+}
+
+class _SupermarketStationPageState extends State<SupermarketStationPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      context.read<ScannerState>().fetchSupermarketDashboard();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<ScannerState>();
     final meta = trackingStationMetaOf('Supermarket');
     final entries = state.supermarketScans;
-    final waitingCount = _calcWaiting(entries);
-    final checkInCount = _calcByLabel(entries, _checkInLabel);
-    final checkOutCount = _calcByLabel(entries, _checkOutLabel);
-    final supplyUrgentCount = state.supplySewingScans.length;
+    final dashboard = state.supermarketDashboard;
+    final waitingCount = dashboard['bundle'] ?? _calcWaiting(entries);
+    final checkInCount = dashboard['in'] ?? _calcByLabel(entries, _checkInLabel);
+    final checkOutCount = dashboard['out'] ?? _calcByLabel(entries, _checkOutLabel);
+    final supplyUrgentCount =
+        dashboard['urgent'] ?? _calcByLabel(entries, _supplyUrgentLabel);
 
     final tableRows = entries
         .map(
@@ -106,12 +125,18 @@ class SupermarketStationPage extends StatelessWidget {
   }
 
   int _calcWaiting(List<StationScanEntry> entries) {
-    final waiting = entries.length - _calcByLabel(entries, _checkOutLabel);
+    final waiting = entries.length -
+        _calcByLabel(entries, _checkOutLabel) -
+        _calcByLabel(entries, _supplyUrgentLabel);
     return waiting < 0 ? 0 : waiting;
   }
 
   String _normalizeActivity(String value) {
-    if (value == _checkInLabel || value == _checkOutLabel) {
+    if (
+      value == _checkInLabel ||
+      value == _checkOutLabel ||
+      value == _supplyUrgentLabel
+    ) {
       return value;
     }
     return _checkInLabel;
@@ -180,14 +205,27 @@ class SupermarketStationPage extends StatelessWidget {
     showTrackingRfidStationDialog(
       context,
       'Supermarket',
-      onSubmitRfid: (rfid) async {
-        final ok = context.read<ScannerState>().addSupermarketScan(
-          rfid: rfid,
-          workOrder: _checkInLabel,
-        );
-        return ok
-            ? RfidScanSubmitResult.ok('Data scanning supermarket berhasil dicatat.')
-            : RfidScanSubmitResult.fail('RFID duplikat atau gagal disimpan.');
+      onSubmitRfid: (payload) async {
+        final scannerState = context.read<ScannerState>();
+        final authState = context.read<AuthState>();
+        final nik = authState.currentUser?.nik.trim() ?? '';
+        if (nik.isEmpty) {
+          return RfidScanSubmitResult.fail(
+            'NIK tidak tersedia. Silakan login ulang.',
+          );
+        }
+        try {
+          await scannerState.submitSupermarketScan(
+            rfidBundles: payload.rfid,
+            nik: nik,
+            status: payload.status ?? 'in',
+            line: payload.line,
+            branch: payload.branch,
+          );
+          return RfidScanSubmitResult.ok('Data scanning supermarket berhasil dicatat.');
+        } catch (e) {
+          return RfidScanSubmitResult.fail(ScannerState.userFacingError(e));
+        }
       },
     );
   }
@@ -205,6 +243,7 @@ class SupermarketStationPage extends StatelessWidget {
 
   static const String _checkInLabel = 'CHECK-IN';
   static const String _checkOutLabel = 'CHECK-OUT';
+  static const String _supplyUrgentLabel = 'SUPPLY-URGENT';
 }
 
 class _StatusCard extends StatelessWidget {

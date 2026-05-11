@@ -65,8 +65,8 @@ class BundleStationPage extends StatelessWidget {
             onPressed: () => showTrackingRfidStationDialog(
               context,
               'Bundle',
-              onSubmitRfid: (rfid) async {
-                final trimmed = rfid.trim();
+              onSubmitRfid: (payload) async {
+                final trimmed = payload.rfid.trim();
                 final scannerState = context.read<ScannerState>();
                 final auth = context.read<AuthState>();
                 final nik = auth.currentUser?.nik.trim() ?? '';

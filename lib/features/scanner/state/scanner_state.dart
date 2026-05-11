@@ -84,6 +84,8 @@ class ScannerState extends ChangeNotifier {
   bool isFetching = false;
   bool isRegistering = false;
   bool isScanLocked = false;
+  bool _isFetchingSupermarketDashboard = false;
+  bool _isFetchingQcDashboard = false;
   String barcodeInput = '';
   String rfidBundlesInput = '';
   String? errorMessage;
@@ -95,6 +97,18 @@ class ScannerState extends ChangeNotifier {
   AppNotice? latestNotice;
   AppMenu activeMenu = AppMenu.home;
   HistoryFilter historyFilter = HistoryFilter.today;
+  Map<String, int> _supermarketDashboard = <String, int>{
+    'bundle': 0,
+    'in': 0,
+    'out': 0,
+    'urgent': 0,
+  };
+  Map<String, int> _qualityControlDashboard = <String, int>{
+    'bundle': 0,
+    'good': 0,
+    'repair': 0,
+    'reject': 0,
+  };
 
   List<ScanHistoryEntry> get scanHistory => List.unmodifiable(_scanHistory);
   List<StationScanEntry> get bundleScans => List.unmodifiable(_bundleScans);
@@ -130,6 +144,12 @@ class ScannerState extends ChangeNotifier {
       List.unmodifiable(_supermarketScans);
   List<StationScanEntry> get supplySewingScans =>
       List.unmodifiable(_supplySewingScans);
+  Map<String, int> get supermarketDashboard => Map<String, int>.unmodifiable(
+    _supermarketDashboard,
+  );
+  Map<String, int> get qualityControlDashboard => Map<String, int>.unmodifiable(
+    _qualityControlDashboard,
+  );
 
   bool get hasResultData => fields.values.any((value) => value.isNotEmpty);
   Set<String> get scannedBundleRfids => _bundleScans.map((e) => e.rfid).toSet();
@@ -509,6 +529,81 @@ class ScannerState extends ChangeNotifier {
     return true;
   }
 
+  Future<void> submitSupermarketScan({
+    required String rfidBundles,
+    required String nik,
+    required String status,
+    String? line,
+    String? branch,
+  }) async {
+    final cleanRfid = rfidBundles.trim();
+    final cleanNik = nik.trim();
+    final cleanStatus = status.trim().toLowerCase();
+    final cleanLine = line?.trim().toUpperCase() ?? '';
+    final cleanBranch = branch?.trim().toUpperCase() ?? '';
+
+    if (cleanRfid.isEmpty) {
+      throw Exception('RFID bundle wajib diisi.');
+    }
+    if (cleanNik.isEmpty) {
+      throw Exception('NIK wajib diisi.');
+    }
+    if (!<String>{'in', 'out', 'urgent'}.contains(cleanStatus)) {
+      throw Exception('Status supermarket tidak valid.');
+    }
+    if (cleanStatus != 'in') {
+      if (cleanLine.isEmpty) {
+        throw Exception('Line wajib diisi.');
+      }
+      if (cleanBranch.isEmpty) {
+        throw Exception('Branch wajib diisi.');
+      }
+    }
+    final statusLabel = switch (cleanStatus) {
+      'out' => 'CHECK-OUT',
+      'urgent' => 'SUPPLY-URGENT',
+      _ => 'CHECK-IN',
+    };
+    if (
+      _supermarketScans.any(
+        (entry) => entry.rfid == cleanRfid && entry.workOrder == statusLabel,
+      )
+    ) {
+      throw Exception('RFID untuk status ini sudah pernah di-scan.');
+    }
+
+    final data = await _apiService.postSupermarketScan(
+      nik: cleanNik,
+      status: cleanStatus,
+      line: cleanStatus == 'in' ? null : cleanLine,
+      branch: cleanStatus == 'in' ? null : cleanBranch,
+      rfidBundles: cleanRfid,
+    );
+
+    final qtyRaw = data['qty'] ?? data['qty_bundles'];
+    final qty = qtyRaw is int
+        ? qtyRaw
+        : int.tryParse(qtyRaw?.toString().trim() ?? '') ?? 10;
+    DateTime scannedAt = DateTime.now();
+    final smarketTime = data['smarket_time']?.toString().trim();
+    if (smarketTime != null && smarketTime.isNotEmpty) {
+      final parsed = DateTime.tryParse(smarketTime);
+      if (parsed != null) {
+        scannedAt = parsed;
+      }
+    }
+    _supermarketScans.insert(
+      0,
+      StationScanEntry(
+        rfid: cleanRfid,
+        workOrder: statusLabel,
+        qty: qty,
+        scannedAt: scannedAt,
+      ),
+    );
+    notifyListeners();
+  }
+
   bool addSupplySewingScan({
     required String rfid,
     String workOrder = 'LIVE-SUPPLY',
@@ -531,6 +626,48 @@ class ScannerState extends ChangeNotifier {
     return true;
   }
 
+  Future<void> fetchSupermarketDashboard() async {
+    if (_isFetchingSupermarketDashboard) {
+      return;
+    }
+    _isFetchingSupermarketDashboard = true;
+    try {
+      final data = await _apiService.fetchSupermarketDashboardData();
+      _supermarketDashboard = <String, int>{
+        'bundle': _parseInt(data['bundle']),
+        'in': _parseInt(data['in']),
+        'out': _parseInt(data['out']),
+        'urgent': _parseInt(data['urgent']),
+      };
+      notifyListeners();
+    } catch (_) {
+      // Tetap biarkan UI pakai fallback data saat API dashboard gagal.
+    } finally {
+      _isFetchingSupermarketDashboard = false;
+    }
+  }
+
+  Future<void> fetchQualityControlDashboard() async {
+    if (_isFetchingQcDashboard) {
+      return;
+    }
+    _isFetchingQcDashboard = true;
+    try {
+      final data = await _apiService.fetchQualityControlDashboardData();
+      _qualityControlDashboard = <String, int>{
+        'bundle': _parseInt(data['bundle']),
+        'good': _parseInt(data['good']),
+        'repair': _parseInt(data['repair']),
+        'reject': _parseInt(data['reject']),
+      };
+      notifyListeners();
+    } catch (_) {
+      // Tetap biarkan UI pakai fallback data saat API dashboard gagal.
+    } finally {
+      _isFetchingQcDashboard = false;
+    }
+  }
+
   void _fillFields(Map<String, dynamic> item, String barcode) {
     lastBarcode = barcode;
     fields['wo'] = _toValue(item['wo']);
@@ -551,6 +688,13 @@ class ScannerState extends ChangeNotifier {
   }
 
   String _toValue(dynamic value) => value == null ? '' : value.toString();
+
+  int _parseInt(dynamic value) {
+    if (value is int) {
+      return value;
+    }
+    return int.tryParse(value?.toString().trim() ?? '') ?? 0;
+  }
 
   static String userFacingError(Object error) {
     final s = error.toString();

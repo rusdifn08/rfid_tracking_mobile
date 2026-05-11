@@ -3,12 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 /// Hasil simpan RFID dari halaman station (untuk log sukses/gagal di dialog).
 class RfidScanSubmitResult {
-  const RfidScanSubmitResult({
-    required this.accepted,
-    this.message,
-  });
+  const RfidScanSubmitResult({required this.accepted, this.message});
 
   final bool accepted;
+
   /// Penjelasan untuk baris gagal, atau catatan tambahan untuk sukses.
   final String? message;
 
@@ -17,6 +15,20 @@ class RfidScanSubmitResult {
 
   static RfidScanSubmitResult fail(String message) =>
       RfidScanSubmitResult(accepted: false, message: message);
+}
+
+class RfidScanSubmitPayload {
+  const RfidScanSubmitPayload({
+    required this.rfid,
+    this.status,
+    this.line,
+    this.branch,
+  });
+
+  final String rfid;
+  final String? status;
+  final String? line;
+  final String? branch;
 }
 
 class _ScanRecord {
@@ -46,7 +58,8 @@ class TrackingRfidStationDialog extends StatefulWidget {
   final String mode;
   final Color accent;
   final String subtitle;
-  final Future<RfidScanSubmitResult> Function(String rfid)? onSubmitRfid;
+  final Future<RfidScanSubmitResult> Function(RfidScanSubmitPayload payload)?
+  onSubmitRfid;
 
   @override
   State<TrackingRfidStationDialog> createState() =>
@@ -64,7 +77,7 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
   final FocusNode _rfidFocus = FocusNode();
   final List<_ScanRecord> _records = <_ScanRecord>[];
   String _selectedAction = _actionCheckIn;
-  String _selectedLocation = 'GM 1';
+  String _selectedLocation = 'GM1';
   int _selectedLine = 1;
 
   late final AnimationController _pulseController;
@@ -114,7 +127,8 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
   }
 
   bool get _isSupermarket => widget.mode == 'Supermarket';
-  bool get _needsLocationAndLine => _isSupermarket && _selectedAction != _actionCheckIn;
+  bool get _needsLocationAndLine =>
+      _isSupermarket && _selectedAction != _actionCheckIn;
 
   String _actionLabel(String action) {
     switch (action) {
@@ -138,14 +152,36 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
     return 'Mode: $action • Location: $_selectedLocation • Line: $_selectedLine';
   }
 
+  String _selectedStatusApi() {
+    switch (_selectedAction) {
+      case _actionCheckOut:
+        return 'out';
+      case _actionSupplyUrgent:
+        return 'urgent';
+      default:
+        return 'in';
+    }
+  }
+
+  String _selectedLineApi() {
+    return 'L${_selectedLine.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _commitRfid() async {
     final v = _rfidController.text.trim();
     if (v.isEmpty) {
       return;
     }
 
-    final result = await (widget.onSubmitRfid?.call(v) ??
-        Future.value(RfidScanSubmitResult.ok()));
+    final payload = RfidScanSubmitPayload(
+      rfid: v,
+      status: _isSupermarket ? _selectedStatusApi() : null,
+      line: _needsLocationAndLine ? _selectedLineApi() : null,
+      branch: _needsLocationAndLine ? _selectedLocation : null,
+    );
+    final result =
+        await (widget.onSubmitRfid?.call(payload) ??
+            Future.value(RfidScanSubmitResult.ok()));
 
     final now = DateTime.now();
     if (!mounted) {
@@ -160,7 +196,8 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
           success: result.accepted,
           at: now,
           detail: [
-            result.message ?? (result.accepted ? 'Tersimpan ke dashboard' : 'Gagal'),
+            result.message ??
+                (result.accepted ? 'Tersimpan ke dashboard' : 'Gagal'),
             _supermarketContextLabel(),
           ].where((e) => e.isNotEmpty).join('\n'),
         ),
@@ -260,7 +297,7 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
                               _selectedAction = value;
                               if (value == _actionCheckIn) {
                                 _selectedLine = 1;
-                                _selectedLocation = 'GM 1';
+                                _selectedLocation = 'GM1';
                               }
                             });
                           },
@@ -371,8 +408,8 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
                                                   i * 0.34) %
                                               1.0;
                                           final scale = 0.45 + p * 0.95;
-                                          final opacity =
-                                              ((1 - p) * 0.45).clamp(0.0, 1.0);
+                                          final opacity = ((1 - p) * 0.45)
+                                              .clamp(0.0, 1.0);
                                           return IgnorePointer(
                                             child: Transform.scale(
                                               scale: scale,
@@ -543,7 +580,10 @@ class _TrackingRfidStationDialogState extends State<TrackingRfidStationDialog>
                               alignment: Alignment.centerRight,
                               child: TextButton.icon(
                                 onPressed: () async => _commitRfid(),
-                                icon: Icon(Icons.add_rounded, color: widget.accent),
+                                icon: Icon(
+                                  Icons.add_rounded,
+                                  color: widget.accent,
+                                ),
                                 label: Text(
                                   'Tambahkan',
                                   style: GoogleFonts.poppins(
@@ -685,15 +725,9 @@ class _ScanRecordTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bg = success
-        ? const Color(0xFFECFDF5)
-        : const Color(0xFFFFF1F2);
-    final border = success
-        ? const Color(0xFFA7F3D0)
-        : const Color(0xFFFECDD3);
-    final accent = success
-        ? const Color(0xFF059669)
-        : const Color(0xFFB42318);
+    final bg = success ? const Color(0xFFECFDF5) : const Color(0xFFFFF1F2);
+    final border = success ? const Color(0xFFA7F3D0) : const Color(0xFFFECDD3);
+    final accent = success ? const Color(0xFF059669) : const Color(0xFFB42318);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(12, 10, 8, 10),
@@ -705,93 +739,93 @@ class _ScanRecordTile extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  rfid,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 15,
+                    color: const Color(0xFF101828),
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 6,
+                  crossAxisAlignment: WrapCrossAlignment.center,
                   children: [
-                    Text(
-                      rfid,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        fontWeight: FontWeight.w700,
-                        fontSize: 15,
-                        color: const Color(0xFF101828),
-                        letterSpacing: -0.2,
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 6,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: accent.withValues(alpha: 0.14),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            success ? 'Berhasil' : 'Gagal',
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: accent,
-                            ),
-                          ),
-                        ),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 3,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF2F4F7),
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            timeLabel,
-                            style: GoogleFonts.poppins(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF667085),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    if (detail != null && detail!.isNotEmpty) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        detail!,
+                      decoration: BoxDecoration(
+                        color: accent.withValues(alpha: 0.14),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        success ? 'Berhasil' : 'Gagal',
                         style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          color: success
-                              ? const Color(0xFF047857)
-                              : const Color(0xFF7A271A),
-                          height: 1.35,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: accent,
                         ),
                       ),
-                    ],
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 3,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF2F4F7),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        timeLabel,
+                        style: GoogleFonts.poppins(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: const Color(0xFF667085),
+                        ),
+                      ),
+                    ),
                   ],
                 ),
-              ),
-              IconButton(
-                visualDensity: VisualDensity.compact,
-                tooltip: 'Hapus dari daftar',
-                onPressed: onDismiss,
-                icon: Icon(
-                  Icons.close_rounded,
-                  size: 20,
-                  color: accent.withValues(alpha: 0.85),
-                ),
-              ),
-            ],
+                if (detail != null && detail!.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Text(
+                    detail!,
+                    style: GoogleFonts.poppins(
+                      fontSize: 12,
+                      color: success
+                          ? const Color(0xFF047857)
+                          : const Color(0xFF7A271A),
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            tooltip: 'Hapus dari daftar',
+            onPressed: onDismiss,
+            icon: Icon(
+              Icons.close_rounded,
+              size: 20,
+              color: accent.withValues(alpha: 0.85),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -814,18 +848,24 @@ class _SupermarketActionTabs extends StatelessWidget {
         Expanded(
           child: _ActionTabButton(
             label: 'Check In',
-            selected: selectedAction == _TrackingRfidStationDialogState._actionCheckIn,
+            selected:
+                selectedAction ==
+                _TrackingRfidStationDialogState._actionCheckIn,
             accent: accent,
-            onTap: () => onChanged(_TrackingRfidStationDialogState._actionCheckIn),
+            onTap: () =>
+                onChanged(_TrackingRfidStationDialogState._actionCheckIn),
           ),
         ),
         const SizedBox(width: 8),
         Expanded(
           child: _ActionTabButton(
             label: 'Check Out',
-            selected: selectedAction == _TrackingRfidStationDialogState._actionCheckOut,
+            selected:
+                selectedAction ==
+                _TrackingRfidStationDialogState._actionCheckOut,
             accent: accent,
-            onTap: () => onChanged(_TrackingRfidStationDialogState._actionCheckOut),
+            onTap: () =>
+                onChanged(_TrackingRfidStationDialogState._actionCheckOut),
           ),
         ),
         const SizedBox(width: 8),
@@ -833,7 +873,8 @@ class _SupermarketActionTabs extends StatelessWidget {
           child: _ActionTabButton(
             label: 'Supply Urgent',
             selected:
-                selectedAction == _TrackingRfidStationDialogState._actionSupplyUrgent,
+                selectedAction ==
+                _TrackingRfidStationDialogState._actionSupplyUrgent,
             accent: accent,
             onTap: () =>
                 onChanged(_TrackingRfidStationDialogState._actionSupplyUrgent),
@@ -864,11 +905,13 @@ class _ActionTabButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
-          backgroundColor: selected ? accent.withValues(alpha: 0.18) : Colors.white,
-          side: BorderSide(
-            color: selected ? accent : const Color(0xFFD0D5DD),
+          backgroundColor: selected
+              ? accent.withValues(alpha: 0.18)
+              : Colors.white,
+          side: BorderSide(color: selected ? accent : const Color(0xFFD0D5DD)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
           ),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           padding: const EdgeInsets.symmetric(horizontal: 8),
         ),
         child: Text(
@@ -947,19 +990,19 @@ class _SupermarketLocationLinePanel extends StatelessWidget {
                       children: [
                         Expanded(
                           child: _LocationButton(
-                            label: 'GM 1',
-                            selected: selectedLocation == 'GM 1',
+                            label: 'GM1',
+                            selected: selectedLocation == 'GM1',
                             accent: accent,
-                            onTap: () => onSelectLocation('GM 1'),
+                            onTap: () => onSelectLocation('GM1'),
                           ),
                         ),
                         const SizedBox(width: 8),
                         Expanded(
                           child: _LocationButton(
-                            label: 'GM 2',
-                            selected: selectedLocation == 'GM 2',
+                            label: 'GM2',
+                            selected: selectedLocation == 'GM2',
                             accent: accent,
-                            onTap: () => onSelectLocation('GM 2'),
+                            onTap: () => onSelectLocation('GM2'),
                           ),
                         ),
                       ],
@@ -969,7 +1012,7 @@ class _SupermarketLocationLinePanel extends StatelessWidget {
               ),
               const SizedBox(width: 10),
               Expanded(
-                flex: 2,
+                flex: 4,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -984,23 +1027,32 @@ class _SupermarketLocationLinePanel extends StatelessWidget {
                     const SizedBox(height: 6),
                     Row(
                       children: [
-                        _LineStepperButton(icon: Icons.remove, onTap: onMinusLine),
+                        _LineStepperButton(
+                          icon: Icons.remove,
+                          onTap: onMinusLine,
+                        ),
                         const SizedBox(width: 6),
                         Expanded(
                           child: Container(
                             height: 42,
                             alignment: Alignment.center,
+                            constraints: const BoxConstraints(minWidth: 50),
                             decoration: BoxDecoration(
                               color: Colors.white,
                               borderRadius: BorderRadius.circular(10),
-                              border: Border.all(color: const Color(0xFFD0D5DD)),
+                              border: Border.all(
+                                color: const Color(0xFFD0D5DD),
+                              ),
                             ),
-                            child: Text(
-                              '$line',
-                              style: GoogleFonts.poppins(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF101828),
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              child: Text(
+                                '$line',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 22,
+                                  fontWeight: FontWeight.w700,
+                                  color: const Color(0xFF101828),
+                                ),
                               ),
                             ),
                           ),
@@ -1040,14 +1092,25 @@ class _LocationButton extends StatelessWidget {
       child: OutlinedButton(
         onPressed: onTap,
         style: OutlinedButton.styleFrom(
-          backgroundColor: selected ? accent.withValues(alpha: 0.18) : Colors.white,
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          minimumSize: const Size(0, 40),
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+          backgroundColor: selected
+              ? accent.withValues(alpha: 0.18)
+              : Colors.white,
           side: BorderSide(color: selected ? accent : const Color(0xFFD0D5DD)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
         child: Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.fade,
+          softWrap: false,
           style: GoogleFonts.poppins(
             fontWeight: FontWeight.w700,
+            fontSize: 11,
             color: selected ? accent : const Color(0xFF344054),
           ),
         ),
@@ -1072,7 +1135,9 @@ class _LineStepperButton extends StatelessWidget {
         style: OutlinedButton.styleFrom(
           padding: EdgeInsets.zero,
           side: const BorderSide(color: Color(0xFFD0D5DD)),
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
         child: Icon(icon, size: 20),
       ),
@@ -1096,7 +1161,7 @@ TrackingStationMeta trackingStationMetaOf(String mode) {
   switch (mode) {
     case 'Bundle':
       return const TrackingStationMeta(
-        accent: Color(0xFF059669),
+        accent: Color(0xFF4F46E5),
         subtitle: 'Scan RFID untuk input Bundle (Cutting)',
         icon: Icons.inventory_2_rounded,
       );
@@ -1108,13 +1173,13 @@ TrackingStationMeta trackingStationMetaOf(String mode) {
       );
     case 'Supermarket':
       return const TrackingStationMeta(
-        accent: Color(0xFFB54708),
+        accent: Color(0xFF059669),
         subtitle: 'Scan RFID untuk proses Supermarket',
         icon: Icons.storefront_outlined,
       );
     default:
       return const TrackingStationMeta(
-        accent: Color(0xFF7A5AF8),
+        accent: Color(0xFFEA580C),
         subtitle: 'Scan RFID untuk proses Supply Sewing',
         icon: Icons.local_shipping_outlined,
       );
@@ -1125,7 +1190,8 @@ TrackingStationMeta trackingStationMetaOf(String mode) {
 void showTrackingRfidStationDialog(
   BuildContext context,
   String mode, {
-  Future<RfidScanSubmitResult> Function(String rfid)? onSubmitRfid,
+  Future<RfidScanSubmitResult> Function(RfidScanSubmitPayload payload)?
+  onSubmitRfid,
 }) {
   final meta = trackingStationMetaOf(mode);
 

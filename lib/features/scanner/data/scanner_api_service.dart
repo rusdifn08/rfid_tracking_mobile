@@ -256,4 +256,112 @@ class ScannerApiService {
       throw Exception(_messageFromBody(decoded, 'Submit quality control gagal.'));
     }
   }
+
+  /// POST `/api/gcc/cutting/smarket` untuk proses supermarket in/out/urgent.
+  Future<Map<String, dynamic>> postSupermarketScan({
+    required String nik,
+    required String status,
+    String? line,
+    String? branch,
+    required String rfidBundles,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/smarket');
+    final response = await _client.post(
+      uri,
+      headers: <String, String>{
+        ..._baseHeaders,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'nik': nik,
+        'status': status,
+        'rfid_bundles': rfidBundles,
+        if (line != null && line.trim().isNotEmpty) 'line': line,
+        if (branch != null && branch.trim().isNotEmpty) 'branch': branch,
+      }),
+    );
+
+    final Map<String, dynamic>? decoded = _tryDecodeMap(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'POST supermarket gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+
+    final success = decoded['success'] == true;
+    if (!success) {
+      throw Exception(
+        _messageFromBody(decoded, 'Proses supermarket gagal.'),
+      );
+    }
+
+    final data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    throw Exception('Data response tidak valid.');
+  }
+
+  Future<Map<String, dynamic>> fetchSupermarketDashboardData() async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/smarket/data');
+    final response = await _client.get(uri, headers: _baseHeaders);
+    final decoded = _tryDecodeMap(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'GET dashboard supermarket gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+
+    final data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return decoded;
+  }
+
+  Future<Map<String, dynamic>> fetchQualityControlDashboardData() async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/qc/data');
+    final response = await _client.get(uri, headers: _baseHeaders);
+    final decoded = _tryDecodeMap(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'GET dashboard quality control gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+
+    final data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    return decoded;
+  }
 }

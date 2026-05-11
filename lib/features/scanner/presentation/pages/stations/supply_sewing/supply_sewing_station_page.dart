@@ -63,9 +63,9 @@ class SupplySewingStationPage extends StatelessWidget {
             onPressed: () => showTrackingRfidStationDialog(
               context,
               'Supply Sewing',
-              onSubmitRfid: (rfid) async {
+              onSubmitRfid: (payload) async {
                 final ok = context.read<ScannerState>().addSupplySewingScan(
-                  rfid: rfid,
+                  rfid: payload.rfid,
                 );
                 return ok
                     ? RfidScanSubmitResult.ok(

@@ -291,5 +291,141 @@ void main() {
       expect(capturedBody['good'], 7);
       expect(capturedBody['nik'], '92300014');
     });
+
+    test('postSupermarketScan mengirim payload smarket yang benar', () async {
+      late Uri capturedUri;
+      late Map<String, String> capturedHeaders;
+      late Map<String, dynamic> capturedBody;
+      final client = MockClient((http.Request request) async {
+        capturedUri = request.url;
+        capturedHeaders = request.headers;
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'message': 'SMarket IN berhasil diproses.',
+            'data': <String, dynamic>{
+              'rfid_bundles': 'RFID001',
+              'line': 'L01',
+              'branch': 'GM1',
+              'qty': 20,
+            },
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        apiKey: 'test-key',
+        client: client,
+      );
+
+      final data = await service.postSupermarketScan(
+        nik: '123456',
+        status: 'in',
+        line: 'L01',
+        branch: 'GM1',
+        rfidBundles: 'RFID001',
+      );
+
+      expect(capturedUri.path, '/api/gcc/cutting/smarket');
+      expect(capturedHeaders['rfid-key'], 'test-key');
+      expect(capturedHeaders['Content-Type'], 'application/json');
+      expect(capturedBody['nik'], '123456');
+      expect(capturedBody['status'], 'in');
+      expect(capturedBody['line'], 'L01');
+      expect(capturedBody['branch'], 'GM1');
+      expect(capturedBody['rfid_bundles'], 'RFID001');
+      expect(data['qty'], 20);
+    });
+
+    test('postSupermarketScan status in tidak wajib kirim line/branch', () async {
+      late Map<String, dynamic> capturedBody;
+      final client = MockClient((http.Request request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'message': 'SMarket IN berhasil diproses.',
+            'data': <String, dynamic>{'qty': 1},
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      await service.postSupermarketScan(
+        nik: '123456',
+        status: 'in',
+        line: null,
+        branch: null,
+        rfidBundles: 'RFID001',
+      );
+
+      expect(capturedBody['status'], 'in');
+      expect(capturedBody.containsKey('line'), isFalse);
+      expect(capturedBody.containsKey('branch'), isFalse);
+    });
+
+    test('fetchSupermarketDashboardData parse bundle/in/out/urgent', () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/gcc/cutting/smarket/data');
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{
+              'bundle': 4,
+              'in': 178,
+              'out': 19,
+              'urgent': 15,
+            },
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      final data = await service.fetchSupermarketDashboardData();
+      expect(data['bundle'], 4);
+      expect(data['in'], 178);
+      expect(data['out'], 19);
+      expect(data['urgent'], 15);
+    });
+
+    test('fetchQualityControlDashboardData parse bundle/good/repair/reject', () async {
+      final client = MockClient((http.Request request) async {
+        expect(request.method, 'GET');
+        expect(request.url.path, '/api/gcc/cutting/qc/data');
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'success': true,
+            'data': <String, dynamic>{
+              'bundle': 4,
+              'good': 178,
+              'repair': 19,
+              'reject': 15,
+            },
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      final data = await service.fetchQualityControlDashboardData();
+      expect(data['bundle'], 4);
+      expect(data['good'], 178);
+      expect(data['repair'], 19);
+      expect(data['reject'], 15);
+    });
   });
 }

@@ -10,8 +10,25 @@ import '../../../widgets/station_dashboard/qc_history_table_card.dart';
 import '../../../widgets/station_dashboard/qc_quality_chart_card.dart';
 import '../../../widgets/station_dashboard/station_page_scaffold.dart';
 
-class QualityControlStationPage extends StatelessWidget {
+class QualityControlStationPage extends StatefulWidget {
   const QualityControlStationPage({super.key});
+
+  @override
+  State<QualityControlStationPage> createState() =>
+      _QualityControlStationPageState();
+}
+
+class _QualityControlStationPageState extends State<QualityControlStationPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      context.read<ScannerState>().fetchQualityControlDashboard();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -56,10 +73,14 @@ class QualityControlStationPage extends StatelessWidget {
     final mergedHourly =
         _hourBuckets.map((hour) => mergedHourlyMap[hour]!).toList();
 
-    final totalScan = state.qualityControlScans.length;
-    final totalGood = mergedHourly.fold<int>(0, (sum, item) => sum + item.good);
-    final totalRepair = mergedHourly.fold<int>(0, (sum, item) => sum + item.repair);
-    final totalReject = mergedHourly.fold<int>(0, (sum, item) => sum + item.reject);
+    final dashboard = state.qualityControlDashboard;
+    final totalScan = dashboard['bundle'] ?? state.qualityControlScans.length;
+    final totalGood =
+        dashboard['good'] ?? mergedHourly.fold<int>(0, (sum, item) => sum + item.good);
+    final totalRepair = dashboard['repair'] ??
+        mergedHourly.fold<int>(0, (sum, item) => sum + item.repair);
+    final totalReject = dashboard['reject'] ??
+        mergedHourly.fold<int>(0, (sum, item) => sum + item.reject);
 
     return StationPageScaffold(
       title: 'Station Quality Control',
@@ -80,10 +101,10 @@ class QualityControlStationPage extends StatelessWidget {
             onPressed: () => showTrackingRfidStationDialog(
               context,
               'Quality Control',
-              onSubmitRfid: (rfid) async {
+              onSubmitRfid: (payload) async {
                 final scannerState = context.read<ScannerState>();
                 final authState = context.read<AuthState>();
-                final cleanRfid = rfid.trim();
+                final cleanRfid = payload.rfid.trim();
                 final nik = authState.currentUser?.nik.trim() ?? '';
                 if (nik.isEmpty) {
                   return RfidScanSubmitResult.fail(
