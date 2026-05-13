@@ -2,23 +2,21 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-import '../../mock/station_dashboard_models.dart';
-
 class QcQualityChartCard extends StatelessWidget {
   const QcQualityChartCard({
     super.key,
-    required this.points,
+    required this.totalGood,
+    required this.totalRepair,
+    required this.totalReject,
   });
 
-  final List<HourlyScanPoint> points;
+  final int totalGood;
+  final int totalRepair;
+  final int totalReject;
 
   @override
   Widget build(BuildContext context) {
-    final totalGood = points.fold<int>(0, (sum, p) => sum + p.good);
-    final totalRepair = points.fold<int>(0, (sum, p) => sum + p.repair);
-    final totalReject = points.fold<int>(0, (sum, p) => sum + p.reject);
     final total = totalGood + totalRepair + totalReject;
-
     double pct(int value) => total == 0 ? 0 : (value / total) * 100;
 
     return Container(

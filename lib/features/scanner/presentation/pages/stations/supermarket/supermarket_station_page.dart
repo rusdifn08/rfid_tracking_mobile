@@ -3,12 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../../auth/state/auth_state.dart';
-import '../../../mock/station_dashboard_models.dart';
 import '../../../../state/scanner_state.dart';
 import '../../../widgets/shell/tracking_rfid_station_dialog.dart';
-import '../../../widgets/station_dashboard/hourly_scan_chart_card.dart';
 import '../../../widgets/station_dashboard/station_page_scaffold.dart';
-import '../../../widgets/station_dashboard/station_summary_cards.dart';
+import '../../../widgets/station_dashboard/supermarket_hourly_chart_card.dart';
 
 class SupermarketStationPage extends StatefulWidget {
   const SupermarketStationPage({super.key});
@@ -33,41 +31,7 @@ class _SupermarketStationPageState extends State<SupermarketStationPage> {
   Widget build(BuildContext context) {
     final state = context.watch<ScannerState>();
     final meta = trackingStationMetaOf('Supermarket');
-    final entries = state.supermarketScans;
     final dashboard = state.supermarketDashboard;
-    final waitingCount = dashboard['bundle'] ?? _calcWaiting(entries);
-    final checkInCount = dashboard['in'] ?? _calcByLabel(entries, _checkInLabel);
-    final checkOutCount = dashboard['out'] ?? _calcByLabel(entries, _checkOutLabel);
-    final supplyUrgentCount =
-        dashboard['urgent'] ?? _calcByLabel(entries, _supplyUrgentLabel);
-
-    final tableRows = entries
-        .map(
-          (entry) => _SupermarketDetailRow(
-            rfid: entry.rfid,
-            activity: _normalizeActivity(entry.workOrder),
-            qty: entry.qty,
-            scannedAt: entry.scannedAt,
-          ),
-        )
-        .toList();
-
-    final perHour = <String, int>{for (final hour in _hourBuckets) hour: 0};
-    for (final entry in entries) {
-      final hh = entry.scannedAt.hour.toString().padLeft(2, '0');
-      perHour[hh] = (perHour[hh] ?? 0) + 1;
-    }
-    final hourly = _hourBuckets
-        .map(
-          (hour) => HourlyScanPoint(
-            hourLabel: hour,
-            total: perHour[hour] ?? 0,
-          ),
-        )
-        .toList();
-
-    final totalScan = hourly.fold<int>(0, (sum, item) => sum + item.total);
-    final peak = hourly.reduce((a, b) => a.total >= b.total ? a : b);
 
     return StationPageScaffold(
       title: 'Supermarket Dashboard',
@@ -76,10 +40,10 @@ class _SupermarketStationPageState extends State<SupermarketStationPage> {
       icon: meta.icon,
       children: [
         _buildStatusCards(
-          waiting: waitingCount,
-          checkIn: checkInCount,
-          checkOut: checkOutCount,
-          supplyUrgent: supplyUrgentCount,
+          waiting: dashboard.jumlahBundle,
+          checkIn: dashboard.checkIn,
+          checkOut: dashboard.checkOut,
+          supplyUrgent: dashboard.supplyUrgent,
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -102,44 +66,14 @@ class _SupermarketStationPageState extends State<SupermarketStationPage> {
           ),
         ),
         const SizedBox(height: 10),
-        StationSummaryCards(
-          totalScan: totalScan,
-          peakHourLabel: '${peak.hourLabel}:00',
-          peakHourCount: peak.total,
-          accent: meta.accent,
+        SupermarketHourlyChartCard(
+          title: 'Data Per Jam',
+          points: dashboard.dataPerJam,
         ),
         const SizedBox(height: 10),
-        HourlyScanChartCard(
-          title: 'Grafik Scan Supermarket per Jam',
-          points: hourly,
-          accent: meta.accent,
-        ),
-        const SizedBox(height: 10),
-        _SupermarketDetailTable(rows: tableRows),
+        _SupermarketDetailTable(items: dashboard.items),
       ],
     );
-  }
-
-  int _calcByLabel(List<StationScanEntry> entries, String label) {
-    return entries.where((entry) => entry.workOrder == label).length;
-  }
-
-  int _calcWaiting(List<StationScanEntry> entries) {
-    final waiting = entries.length -
-        _calcByLabel(entries, _checkOutLabel) -
-        _calcByLabel(entries, _supplyUrgentLabel);
-    return waiting < 0 ? 0 : waiting;
-  }
-
-  String _normalizeActivity(String value) {
-    if (
-      value == _checkInLabel ||
-      value == _checkOutLabel ||
-      value == _supplyUrgentLabel
-    ) {
-      return value;
-    }
-    return _checkInLabel;
   }
 
   Widget _buildStatusCards({
@@ -157,7 +91,7 @@ class _SupermarketStationPageState extends State<SupermarketStationPage> {
           children: [
             _StatusCard(
               width: itemWidth,
-              title: 'Waiting',
+              title: 'Jumlah Bundle',
               value: waiting,
               color: const Color(0xFF6D28D9),
               icon: Icons.layers_rounded,
@@ -229,21 +163,6 @@ class _SupermarketStationPageState extends State<SupermarketStationPage> {
       },
     );
   }
-
-  static const List<String> _hourBuckets = <String>[
-    '08',
-    '09',
-    '10',
-    '11',
-    '12',
-    '13',
-    '14',
-    '15',
-  ];
-
-  static const String _checkInLabel = 'CHECK-IN';
-  static const String _checkOutLabel = 'CHECK-OUT';
-  static const String _supplyUrgentLabel = 'SUPPLY-URGENT';
 }
 
 class _StatusCard extends StatelessWidget {
@@ -351,24 +270,26 @@ class _StatusCard extends StatelessWidget {
   }
 }
 
-class _SupermarketDetailRow {
-  const _SupermarketDetailRow({
-    required this.rfid,
-    required this.activity,
-    required this.qty,
-    required this.scannedAt,
-  });
+class _SupermarketDetailTable extends StatefulWidget {
+  const _SupermarketDetailTable({required this.items});
 
-  final String rfid;
-  final String activity;
-  final int qty;
-  final DateTime scannedAt;
+  final List<SupermarketDashboardItem> items;
+
+  @override
+  State<_SupermarketDetailTable> createState() =>
+      _SupermarketDetailTableState();
 }
 
-class _SupermarketDetailTable extends StatelessWidget {
-  const _SupermarketDetailTable({required this.rows});
+class _SupermarketDetailTableState extends State<_SupermarketDetailTable> {
+  final ScrollController _hScroll = ScrollController();
 
-  final List<_SupermarketDetailRow> rows;
+  @override
+  void dispose() {
+    _hScroll.dispose();
+    super.dispose();
+  }
+
+  List<SupermarketDashboardItem> get items => widget.items;
 
   @override
   Widget build(BuildContext context) {
@@ -383,59 +304,134 @@ class _SupermarketDetailTable extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Tabel Detail Supermarket',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF111827),
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Tabel Supermarket Cutting',
+                  style: GoogleFonts.poppins(
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
+                  ),
+                ),
+              ),
+              Text(
+                '${items.length} baris',
+                style: GoogleFonts.poppins(
+                  fontSize: 11,
+                  color: const Color(0xFF64748B),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: DataTable(
-              headingTextStyle: GoogleFonts.poppins(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF334155),
+          Scrollbar(
+            controller: _hScroll,
+            thumbVisibility: true,
+            child: SingleChildScrollView(
+              controller: _hScroll,
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.only(bottom: 8),
+              child: DataTable(
+                columnSpacing: 24,
+                headingRowHeight: 38,
+                dataRowMinHeight: 40,
+                dataRowMaxHeight: 48,
+                headingTextStyle: GoogleFonts.poppins(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: const Color(0xFF334155),
+                ),
+                columns: const [
+                  DataColumn(label: Text('RFID Bundle')),
+                  DataColumn(label: Text('WO')),
+                  DataColumn(label: Text('QTY')),
+                  DataColumn(label: Text('Line')),
+                  DataColumn(label: Text('Lokasi')),
+                  DataColumn(label: Text('Waktu')),
+                ],
+                rows: items.isEmpty
+                    ? const <DataRow>[
+                        DataRow(
+                          cells: [
+                            DataCell(Text('-')),
+                            DataCell(Text('-')),
+                            DataCell(Text('0')),
+                            DataCell(Text('—')),
+                            DataCell(Text('Belum ada data')),
+                            DataCell(Text('-')),
+                          ],
+                        ),
+                      ]
+                    : items
+                          .map(
+                            (item) => DataRow(
+                              cells: [
+                                DataCell(Text(item.rfidBundle)),
+                                DataCell(Text(item.wo)),
+                                DataCell(Text('${item.qty}')),
+                                DataCell(Text(_formatLine(item))),
+                                DataCell(Text(_formatLokasi(item))),
+                                DataCell(Text(_formatWaktu(item))),
+                              ],
+                            ),
+                          )
+                          .toList(),
               ),
-              columns: const [
-                DataColumn(label: Text('RFID')),
-                DataColumn(label: Text('Aktivitas')),
-                DataColumn(label: Text('Qty')),
-                DataColumn(label: Text('Waktu Scan')),
-              ],
-              rows: rows.isEmpty
-                  ? [
-                      const DataRow(
-                        cells: [
-                          DataCell(Text('-')),
-                          DataCell(Text('Belum ada data')),
-                          DataCell(Text('0')),
-                          DataCell(Text('-')),
-                        ],
-                      ),
-                    ]
-                  : rows
-                        .map(
-                          (row) => DataRow(
-                            cells: [
-                              DataCell(Text(row.rfid)),
-                              DataCell(Text(row.activity)),
-                              DataCell(Text('${row.qty}')),
-                              DataCell(
-                                Text(
-                                  '${row.scannedAt.hour.toString().padLeft(2, '0')}:${row.scannedAt.minute.toString().padLeft(2, '0')}',
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                        .toList(),
             ),
           ),
         ],
       ),
     );
+  }
+
+  String _formatLine(SupermarketDashboardItem item) {
+    final v = item.line.trim();
+    return v.isEmpty ? '—' : v;
+  }
+
+  String _formatLokasi(SupermarketDashboardItem item) {
+    // Lokasi diturunkan dari last_status agar sinkron dengan dashboard web:
+    // IN_SMARKET   -> "supermarket"
+    // OUT_SMARKET  -> "OUT SMARKET"
+    // SUPPLY_URGENT -> "SUPPLY URGENT"
+    final status = item.lastStatus.toUpperCase().trim();
+    switch (status) {
+      case 'IN_SMARKET':
+        return 'supermarket';
+      case 'OUT_SMARKET':
+        return 'OUT SMARKET';
+      case 'SUPPLY_URGENT':
+        return 'SUPPLY URGENT';
+    }
+    final branch = item.branch.trim();
+    return branch.isEmpty ? 'supermarket' : branch;
+  }
+
+  String _formatWaktu(SupermarketDashboardItem item) {
+    final dt = item.smarketTime;
+    if (dt == null) {
+      return '-';
+    }
+    const months = <String>[
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'Mei',
+      'Jun',
+      'Jul',
+      'Ags',
+      'Sep',
+      'Okt',
+      'Nov',
+      'Des',
+    ];
+    final day = dt.day.toString().padLeft(2, '0');
+    final mon = months[(dt.month - 1).clamp(0, 11)];
+    final year = dt.year;
+    final hh = dt.hour.toString().padLeft(2, '0');
+    final mm = dt.minute.toString().padLeft(2, '0');
+    return '$day $mon $year pukul $hh.$mm';
   }
 }

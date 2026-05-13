@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'package:scanner/config/coming.dart' as coming;
+
 import 'home_feature_card.dart';
 
 class HomeTrackingQuickGrid extends StatelessWidget {
@@ -70,6 +72,7 @@ class HomeTrackingQuickGrid extends StatelessWidget {
               borderColor: const Color(0xFFFED7AA),
               delayMs: 180,
               dense: true,
+              comingSoon: coming.supplySewing,
               onTap: () => onTrackingModeTap('Supply Sewing'),
             ),
           ],

@@ -88,3 +88,64 @@
 - Field `line` dan `branch` hanya tersedia saat tab Check Out/Supply Urgent.
 - Data dashboard atas tetap diambil dari endpoint dashboard:
   - `GET /api/gcc/cutting/smarket/data`
+- Setelah POST `/api/gcc/cutting/smarket` sukses, aplikasi otomatis memanggil
+  ulang endpoint dashboard di atas agar kartu summary, grafik per jam, dan tabel
+  selalu mencerminkan data terbaru.
+
+## Endpoint Dashboard Supermarket
+
+### `GET /api/gcc/cutting/smarket/data`
+
+Contoh response sukses:
+```json
+{
+  "code": 200,
+  "status": "success",
+  "message": "Data dashboard SMarket berhasil ditampilkan.",
+  "data": {
+    "tanggal_from": "2026-05-08T00:00:00",
+    "tanggal_to": "2026-05-08T23:59:59",
+    "summary": {
+      "jumlah_bundle": 5,
+      "check_in": 3,
+      "check_out": 2,
+      "supply_urgent": 1
+    },
+    "data_per_jam": [
+      {
+        "jam": "15:00",
+        "check_in": 2,
+        "check_out": 1,
+        "supply_urgent": 1
+      }
+    ],
+    "total_data": 4,
+    "items": [
+      {
+        "tanggal": "2026-05-08T15:31:00",
+        "id_bundles": 1001,
+        "rfid_bundles": "0002028014",
+        "wo": "187491",
+        "qty_output": 8,
+        "qty_good": 8,
+        "qty_smarket_in": 8,
+        "last_time_smarket_in": "2026-05-08T15:31:00",
+        "qty_smarket_out": 0,
+        "last_time_smarket_out": null,
+        "qty": 8,
+        "line": null,
+        "branch": null,
+        "last_status": "IN_SMARKET",
+        "smarket_time": "2026-05-08T15:31:00"
+      }
+    ]
+  }
+}
+```
+
+Pemetaan ke UI:
+- `summary` -> empat kartu di atas (Jumlah Bundle / Check In / Check Out / Supply Urgent).
+- `data_per_jam` -> chart `Data Per Jam` dengan tiga garis (Check In, Check Out, Supply Urgent).
+- `items` -> tabel `Tabel Supermarket Cutting` dengan kolom RFID Bundle, WO,
+  QTY, Line, Lokasi (`branch` jika ada, fallback `supermarket`), dan Waktu
+  (diformat `dd MMM yyyy, HH:mm` dari `smarket_time`).

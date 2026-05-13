@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../../auth/state/auth_state.dart';
-import '../../../mock/station_dashboard_models.dart';
 import '../../../../state/scanner_state.dart';
 import '../../../widgets/shell/tracking_rfid_station_dialog.dart';
 import '../../../widgets/station_dashboard/qc_history_table_card.dart';
+import '../../../widgets/station_dashboard/qc_hourly_chart_card.dart';
 import '../../../widgets/station_dashboard/qc_quality_chart_card.dart';
 import '../../../widgets/station_dashboard/station_page_scaffold.dart';
 
@@ -34,53 +34,7 @@ class _QualityControlStationPageState extends State<QualityControlStationPage> {
   Widget build(BuildContext context) {
     final state = context.watch<ScannerState>();
     final meta = trackingStationMetaOf('Quality Control');
-    final liveRows = state.qualityControlScans
-        .map(
-          (entry) => QcHistoryRow(
-            rfidBundle: entry.rfid,
-            qty: entry.qty,
-            good: entry.good,
-            repair: entry.repair,
-            reject: entry.reject,
-          ),
-        )
-        .toList();
-    final tableRows = <QcHistoryRow>[...liveRows];
-
-    final mergedHourlyMap = <String, HourlyScanPoint>{
-      for (final hour in _hourBuckets)
-        hour: HourlyScanPoint(
-          hourLabel: hour,
-          total: 0,
-          good: 0,
-          repair: 0,
-          reject: 0,
-        ),
-    };
-    for (final entry in state.qualityControlScans) {
-      final hh = entry.scannedAt.hour.toString().padLeft(2, '0');
-      final current =
-          mergedHourlyMap[hh] ??
-          HourlyScanPoint(hourLabel: hh, total: 0, good: 0, repair: 0, reject: 0);
-      mergedHourlyMap[hh] = HourlyScanPoint(
-        hourLabel: hh,
-        total: current.total + 1,
-        good: current.good + entry.good,
-        repair: current.repair + entry.repair,
-        reject: current.reject + entry.reject,
-      );
-    }
-    final mergedHourly =
-        _hourBuckets.map((hour) => mergedHourlyMap[hour]!).toList();
-
     final dashboard = state.qualityControlDashboard;
-    final totalScan = dashboard['bundle'] ?? state.qualityControlScans.length;
-    final totalGood =
-        dashboard['good'] ?? mergedHourly.fold<int>(0, (sum, item) => sum + item.good);
-    final totalRepair = dashboard['repair'] ??
-        mergedHourly.fold<int>(0, (sum, item) => sum + item.repair);
-    final totalReject = dashboard['reject'] ??
-        mergedHourly.fold<int>(0, (sum, item) => sum + item.reject);
 
     return StationPageScaffold(
       title: 'Station Quality Control',
@@ -89,10 +43,10 @@ class _QualityControlStationPageState extends State<QualityControlStationPage> {
       icon: meta.icon,
       children: [
         _buildQcSummaryCards(
-          totalBundle: totalScan,
-          totalGood: totalGood,
-          totalRepair: totalRepair,
-          totalReject: totalReject,
+          totalBundle: dashboard.jumlahBundle,
+          totalGood: dashboard.totalGood,
+          totalRepair: dashboard.totalRepair,
+          totalReject: dashboard.totalReject,
         ),
         const SizedBox(height: 10),
         SizedBox(
@@ -170,23 +124,21 @@ class _QualityControlStationPageState extends State<QualityControlStationPage> {
           ),
         ),
         const SizedBox(height: 10),
-        QcQualityChartCard(points: mergedHourly),
+        QcHourlyChartCard(
+          title: 'Data Per Jam',
+          points: dashboard.dataPerJam,
+        ),
         const SizedBox(height: 10),
-        QcHistoryTableCard(rows: tableRows),
+        QcQualityChartCard(
+          totalGood: dashboard.totalGood,
+          totalRepair: dashboard.totalRepair,
+          totalReject: dashboard.totalReject,
+        ),
+        const SizedBox(height: 10),
+        QcHistoryTableCard(items: dashboard.items),
       ],
     );
   }
-
-  static const List<String> _hourBuckets = <String>[
-    '08',
-    '09',
-    '10',
-    '11',
-    '12',
-    '13',
-    '14',
-    '15',
-  ];
 
   Widget _buildQcSummaryCards({
     required int totalBundle,

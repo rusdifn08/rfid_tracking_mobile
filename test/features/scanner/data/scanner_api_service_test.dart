@@ -339,6 +339,44 @@ void main() {
       expect(data['qty'], 20);
     });
 
+    test('postSupermarketScan menerima format code/status dari backend', () async {
+      // Regresi: backend kadang balas {code:200, status:"success", message, data}
+      // tanpa field "success". Sebelumnya kode keliru menganggap gagal.
+      final client = MockClient((http.Request request) async {
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'SMarket URGENT berhasil diproses.',
+            'data': <String, dynamic>{
+              'rfid_bundles': '0007925825',
+              'line': 'L05',
+              'branch': 'GM2',
+              'qty': 5,
+              'last_status': 'SUPPLY_URGENT',
+              'smarket_time': '2026-05-12T16:05:22',
+            },
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      final data = await service.postSupermarketScan(
+        nik: '123456',
+        status: 'urgent',
+        line: 'L05',
+        branch: 'GM2',
+        rfidBundles: '0007925825',
+      );
+
+      expect(data['rfid_bundles'], '0007925825');
+      expect(data['last_status'], 'SUPPLY_URGENT');
+    });
+
     test('postSupermarketScan status in tidak wajib kirim line/branch', () async {
       late Map<String, dynamic> capturedBody;
       final client = MockClient((http.Request request) async {
@@ -370,18 +408,45 @@ void main() {
       expect(capturedBody.containsKey('branch'), isFalse);
     });
 
-    test('fetchSupermarketDashboardData parse bundle/in/out/urgent', () async {
+    test('fetchSupermarketDashboardData parse summary/per-jam/items', () async {
       final client = MockClient((http.Request request) async {
         expect(request.method, 'GET');
         expect(request.url.path, '/api/gcc/cutting/smarket/data');
         return http.Response(
           jsonEncode(<String, dynamic>{
-            'success': true,
+            'code': 200,
+            'status': 'success',
+            'message': 'Data dashboard SMarket berhasil ditampilkan.',
             'data': <String, dynamic>{
-              'bundle': 4,
-              'in': 178,
-              'out': 19,
-              'urgent': 15,
+              'tanggal_from': '2026-05-08T00:00:00',
+              'tanggal_to': '2026-05-08T23:59:59',
+              'summary': <String, dynamic>{
+                'jumlah_bundle': 5,
+                'check_in': 3,
+                'check_out': 2,
+                'supply_urgent': 1,
+              },
+              'data_per_jam': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'jam': '15:00',
+                  'check_in': 2,
+                  'check_out': 1,
+                  'supply_urgent': 1,
+                },
+              ],
+              'total_data': 4,
+              'items': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'tanggal': '2026-05-08T15:31:00',
+                  'rfid_bundles': '0002028014',
+                  'wo': '187491',
+                  'qty': 8,
+                  'line': null,
+                  'branch': null,
+                  'last_status': 'IN_SMARKET',
+                  'smarket_time': '2026-05-08T15:31:00',
+                },
+              ],
             },
           }),
           200,
@@ -393,24 +458,67 @@ void main() {
       );
 
       final data = await service.fetchSupermarketDashboardData();
-      expect(data['bundle'], 4);
-      expect(data['in'], 178);
-      expect(data['out'], 19);
-      expect(data['urgent'], 15);
+      final summary = data['summary'] as Map<String, dynamic>;
+      expect(summary['jumlah_bundle'], 5);
+      expect(summary['check_in'], 3);
+      expect(summary['check_out'], 2);
+      expect(summary['supply_urgent'], 1);
+
+      final perJam = (data['data_per_jam'] as List).cast<Map<String, dynamic>>();
+      expect(perJam.first['jam'], '15:00');
+      expect(perJam.first['check_in'], 2);
+
+      final items = (data['items'] as List).cast<Map<String, dynamic>>();
+      expect(items.first['rfid_bundles'], '0002028014');
+      expect(items.first['wo'], '187491');
+      expect(items.first['qty'], 8);
+      expect(items.first['last_status'], 'IN_SMARKET');
     });
 
-    test('fetchQualityControlDashboardData parse bundle/good/repair/reject', () async {
+    test('fetchQualityControlDashboardData parse summary/per-jam/items', () async {
       final client = MockClient((http.Request request) async {
         expect(request.method, 'GET');
         expect(request.url.path, '/api/gcc/cutting/qc/data');
         return http.Response(
           jsonEncode(<String, dynamic>{
-            'success': true,
+            'code': 200,
+            'status': 'success',
+            'message': 'Data dashboard QC berhasil ditampilkan.',
             'data': <String, dynamic>{
-              'bundle': 4,
-              'good': 178,
-              'repair': 19,
-              'reject': 15,
+              'tanggal_from': '2026-05-09T00:00:00',
+              'tanggal_to': '2026-05-09T23:59:59',
+              'summary': <String, dynamic>{
+                'jumlah_bundle': 6,
+                'total_good': 4,
+                'total_repair': 2,
+                'total_reject': 1,
+              },
+              'data_per_jam': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'jam': '08:00',
+                  'good': 2,
+                  'repair': 1,
+                  'reject': 0,
+                },
+                <String, dynamic>{
+                  'jam': '09:00',
+                  'good': 2,
+                  'repair': 1,
+                  'reject': 1,
+                },
+              ],
+              'total_data': 2,
+              'items': <Map<String, dynamic>>[
+                <String, dynamic>{
+                  'tanggal': '2026-05-09T08:15:00',
+                  'rfid_bundles': '0013468151',
+                  'wo': 'WO-001',
+                  'qty_output': 10,
+                  'qty_good': 7,
+                  'qty_repair': 2,
+                  'qty_reject': 1,
+                },
+              ],
             },
           }),
           200,
@@ -422,10 +530,22 @@ void main() {
       );
 
       final data = await service.fetchQualityControlDashboardData();
-      expect(data['bundle'], 4);
-      expect(data['good'], 178);
-      expect(data['repair'], 19);
-      expect(data['reject'], 15);
+      final summary = data['summary'] as Map<String, dynamic>;
+      expect(summary['jumlah_bundle'], 6);
+      expect(summary['total_good'], 4);
+      expect(summary['total_repair'], 2);
+      expect(summary['total_reject'], 1);
+
+      final perJam = (data['data_per_jam'] as List).cast<Map<String, dynamic>>();
+      expect(perJam.length, 2);
+      expect(perJam.first['jam'], '08:00');
+      expect(perJam.last['reject'], 1);
+
+      final items = (data['items'] as List).cast<Map<String, dynamic>>();
+      expect(items.first['rfid_bundles'], '0013468151');
+      expect(items.first['wo'], 'WO-001');
+      expect(items.first['qty_output'], 10);
+      expect(items.first['qty_good'], 7);
     });
   });
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../../../core/models/scan_history_entry.dart';
@@ -53,6 +55,128 @@ class AppNotice {
   final NoticeType type;
 }
 
+class SupermarketHourlyPoint {
+  const SupermarketHourlyPoint({
+    required this.hour,
+    required this.checkIn,
+    required this.checkOut,
+    required this.supplyUrgent,
+  });
+
+  final String hour;
+  final int checkIn;
+  final int checkOut;
+  final int supplyUrgent;
+}
+
+class SupermarketDashboardItem {
+  const SupermarketDashboardItem({
+    required this.rfidBundle,
+    required this.wo,
+    required this.qty,
+    required this.line,
+    required this.branch,
+    required this.lastStatus,
+    required this.smarketTime,
+  });
+
+  final String rfidBundle;
+  final String wo;
+  final int qty;
+  final String line;
+  final String branch;
+  final String lastStatus;
+  final DateTime? smarketTime;
+}
+
+class SupermarketDashboardSnapshot {
+  const SupermarketDashboardSnapshot({
+    required this.jumlahBundle,
+    required this.checkIn,
+    required this.checkOut,
+    required this.supplyUrgent,
+    required this.dataPerJam,
+    required this.items,
+  });
+
+  final int jumlahBundle;
+  final int checkIn;
+  final int checkOut;
+  final int supplyUrgent;
+  final List<SupermarketHourlyPoint> dataPerJam;
+  final List<SupermarketDashboardItem> items;
+
+  static const SupermarketDashboardSnapshot empty = SupermarketDashboardSnapshot(
+    jumlahBundle: 0,
+    checkIn: 0,
+    checkOut: 0,
+    supplyUrgent: 0,
+    dataPerJam: <SupermarketHourlyPoint>[],
+    items: <SupermarketDashboardItem>[],
+  );
+}
+
+class QcHourlyPoint {
+  const QcHourlyPoint({
+    required this.hour,
+    required this.good,
+    required this.repair,
+    required this.reject,
+  });
+
+  final String hour;
+  final int good;
+  final int repair;
+  final int reject;
+}
+
+class QcDashboardItem {
+  const QcDashboardItem({
+    required this.rfidBundle,
+    required this.wo,
+    required this.qtyOutput,
+    required this.qtyGood,
+    required this.qtyRepair,
+    required this.qtyReject,
+    required this.tanggal,
+  });
+
+  final String rfidBundle;
+  final String wo;
+  final int qtyOutput;
+  final int qtyGood;
+  final int qtyRepair;
+  final int qtyReject;
+  final DateTime? tanggal;
+}
+
+class QcDashboardSnapshot {
+  const QcDashboardSnapshot({
+    required this.jumlahBundle,
+    required this.totalGood,
+    required this.totalRepair,
+    required this.totalReject,
+    required this.dataPerJam,
+    required this.items,
+  });
+
+  final int jumlahBundle;
+  final int totalGood;
+  final int totalRepair;
+  final int totalReject;
+  final List<QcHourlyPoint> dataPerJam;
+  final List<QcDashboardItem> items;
+
+  static const QcDashboardSnapshot empty = QcDashboardSnapshot(
+    jumlahBundle: 0,
+    totalGood: 0,
+    totalRepair: 0,
+    totalReject: 0,
+    dataPerJam: <QcHourlyPoint>[],
+    items: <QcDashboardItem>[],
+  );
+}
+
 class ScannerState extends ChangeNotifier {
   ScannerState({ScannerApiService? apiService})
       : _apiService = apiService ?? ScannerApiService();
@@ -97,18 +221,9 @@ class ScannerState extends ChangeNotifier {
   AppNotice? latestNotice;
   AppMenu activeMenu = AppMenu.home;
   HistoryFilter historyFilter = HistoryFilter.today;
-  Map<String, int> _supermarketDashboard = <String, int>{
-    'bundle': 0,
-    'in': 0,
-    'out': 0,
-    'urgent': 0,
-  };
-  Map<String, int> _qualityControlDashboard = <String, int>{
-    'bundle': 0,
-    'good': 0,
-    'repair': 0,
-    'reject': 0,
-  };
+  SupermarketDashboardSnapshot _supermarketDashboard =
+      SupermarketDashboardSnapshot.empty;
+  QcDashboardSnapshot _qualityControlDashboard = QcDashboardSnapshot.empty;
 
   List<ScanHistoryEntry> get scanHistory => List.unmodifiable(_scanHistory);
   List<StationScanEntry> get bundleScans => List.unmodifiable(_bundleScans);
@@ -144,12 +259,8 @@ class ScannerState extends ChangeNotifier {
       List.unmodifiable(_supermarketScans);
   List<StationScanEntry> get supplySewingScans =>
       List.unmodifiable(_supplySewingScans);
-  Map<String, int> get supermarketDashboard => Map<String, int>.unmodifiable(
-    _supermarketDashboard,
-  );
-  Map<String, int> get qualityControlDashboard => Map<String, int>.unmodifiable(
-    _qualityControlDashboard,
-  );
+  SupermarketDashboardSnapshot get supermarketDashboard => _supermarketDashboard;
+  QcDashboardSnapshot get qualityControlDashboard => _qualityControlDashboard;
 
   bool get hasResultData => fields.values.any((value) => value.isNotEmpty);
   Set<String> get scannedBundleRfids => _bundleScans.map((e) => e.rfid).toSet();
@@ -498,6 +609,9 @@ class ScannerState extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    // Refresh dashboard QC di background agar UI menampilkan summary,
+    // grafik per jam, dan tabel terbaru tanpa user harus reload manual.
+    unawaited(fetchQualityControlDashboard());
   }
 
   bool addSupermarketScan({
@@ -602,6 +716,9 @@ class ScannerState extends ChangeNotifier {
       ),
     );
     notifyListeners();
+    // Refresh dashboard supermarket di background agar UI menampilkan
+    // angka summary, grafik per jam, dan tabel terbaru.
+    unawaited(fetchSupermarketDashboard());
   }
 
   bool addSupplySewingScan({
@@ -633,18 +750,58 @@ class ScannerState extends ChangeNotifier {
     _isFetchingSupermarketDashboard = true;
     try {
       final data = await _apiService.fetchSupermarketDashboardData();
-      _supermarketDashboard = <String, int>{
-        'bundle': _parseInt(data['bundle']),
-        'in': _parseInt(data['in']),
-        'out': _parseInt(data['out']),
-        'urgent': _parseInt(data['urgent']),
-      };
+      _supermarketDashboard = _parseSupermarketSnapshot(data);
       notifyListeners();
     } catch (_) {
       // Tetap biarkan UI pakai fallback data saat API dashboard gagal.
     } finally {
       _isFetchingSupermarketDashboard = false;
     }
+  }
+
+  SupermarketDashboardSnapshot _parseSupermarketSnapshot(
+    Map<String, dynamic> data,
+  ) {
+    final summaryRaw = data['summary'];
+    final summary = summaryRaw is Map
+        ? Map<String, dynamic>.from(summaryRaw)
+        : <String, dynamic>{};
+    final perJamRaw = data['data_per_jam'];
+    final perJamList = perJamRaw is List ? perJamRaw : const <dynamic>[];
+    final itemsRaw = data['items'];
+    final itemsList = itemsRaw is List ? itemsRaw : const <dynamic>[];
+
+    return SupermarketDashboardSnapshot(
+      jumlahBundle: _parseInt(summary['jumlah_bundle']),
+      checkIn: _parseInt(summary['check_in']),
+      checkOut: _parseInt(summary['check_out']),
+      supplyUrgent: _parseInt(summary['supply_urgent']),
+      dataPerJam: perJamList
+          .whereType<Map>()
+          .map(
+            (raw) => SupermarketHourlyPoint(
+              hour: (raw['jam'] ?? '').toString(),
+              checkIn: _parseInt(raw['check_in']),
+              checkOut: _parseInt(raw['check_out']),
+              supplyUrgent: _parseInt(raw['supply_urgent']),
+            ),
+          )
+          .toList(growable: false),
+      items: itemsList
+          .whereType<Map>()
+          .map(
+            (raw) => SupermarketDashboardItem(
+              rfidBundle: (raw['rfid_bundles'] ?? '').toString(),
+              wo: (raw['wo'] ?? '').toString(),
+              qty: _parseInt(raw['qty']),
+              line: (raw['line'] ?? '').toString(),
+              branch: (raw['branch'] ?? '').toString(),
+              lastStatus: (raw['last_status'] ?? '').toString(),
+              smarketTime: _parseDateTime(raw['smarket_time']),
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   Future<void> fetchQualityControlDashboard() async {
@@ -654,18 +811,56 @@ class ScannerState extends ChangeNotifier {
     _isFetchingQcDashboard = true;
     try {
       final data = await _apiService.fetchQualityControlDashboardData();
-      _qualityControlDashboard = <String, int>{
-        'bundle': _parseInt(data['bundle']),
-        'good': _parseInt(data['good']),
-        'repair': _parseInt(data['repair']),
-        'reject': _parseInt(data['reject']),
-      };
+      _qualityControlDashboard = _parseQcSnapshot(data);
       notifyListeners();
     } catch (_) {
       // Tetap biarkan UI pakai fallback data saat API dashboard gagal.
     } finally {
       _isFetchingQcDashboard = false;
     }
+  }
+
+  QcDashboardSnapshot _parseQcSnapshot(Map<String, dynamic> data) {
+    final summaryRaw = data['summary'];
+    final summary = summaryRaw is Map
+        ? Map<String, dynamic>.from(summaryRaw)
+        : <String, dynamic>{};
+    final perJamRaw = data['data_per_jam'];
+    final perJamList = perJamRaw is List ? perJamRaw : const <dynamic>[];
+    final itemsRaw = data['items'];
+    final itemsList = itemsRaw is List ? itemsRaw : const <dynamic>[];
+
+    return QcDashboardSnapshot(
+      jumlahBundle: _parseInt(summary['jumlah_bundle']),
+      totalGood: _parseInt(summary['total_good']),
+      totalRepair: _parseInt(summary['total_repair']),
+      totalReject: _parseInt(summary['total_reject']),
+      dataPerJam: perJamList
+          .whereType<Map>()
+          .map(
+            (raw) => QcHourlyPoint(
+              hour: (raw['jam'] ?? '').toString(),
+              good: _parseInt(raw['good']),
+              repair: _parseInt(raw['repair']),
+              reject: _parseInt(raw['reject']),
+            ),
+          )
+          .toList(growable: false),
+      items: itemsList
+          .whereType<Map>()
+          .map(
+            (raw) => QcDashboardItem(
+              rfidBundle: (raw['rfid_bundles'] ?? '').toString(),
+              wo: (raw['wo'] ?? '').toString(),
+              qtyOutput: _parseInt(raw['qty_output']),
+              qtyGood: _parseInt(raw['qty_good']),
+              qtyRepair: _parseInt(raw['qty_repair']),
+              qtyReject: _parseInt(raw['qty_reject']),
+              tanggal: _parseDateTime(raw['tanggal']),
+            ),
+          )
+          .toList(growable: false),
+    );
   }
 
   void _fillFields(Map<String, dynamic> item, String barcode) {
@@ -694,6 +889,17 @@ class ScannerState extends ChangeNotifier {
       return value;
     }
     return int.tryParse(value?.toString().trim() ?? '') ?? 0;
+  }
+
+  DateTime? _parseDateTime(dynamic value) {
+    if (value == null) {
+      return null;
+    }
+    final raw = value.toString().trim();
+    if (raw.isEmpty) {
+      return null;
+    }
+    return DateTime.tryParse(raw);
   }
 
   static String userFacingError(Object error) {

@@ -294,7 +294,12 @@ class ScannerApiService {
       throw Exception('Response tidak valid.');
     }
 
-    final success = decoded['success'] == true;
+    // Backend menggunakan dua bentuk indikator sukses:
+    // 1) {"success": true, ...}                (versi awal contoh dokumentasi)
+    // 2) {"code": 200, "status": "success", ...} (konsisten dengan endpoint lain)
+    // Terima keduanya supaya tidak salah label "gagal" saat backend mengirim
+    // format konvensional code/status seperti endpoint /qc dan /smarket/data.
+    final success = _isResponseSuccess(decoded);
     if (!success) {
       throw Exception(
         _messageFromBody(decoded, 'Proses supermarket gagal.'),
@@ -309,6 +314,16 @@ class ScannerApiService {
       return Map<String, dynamic>.from(data);
     }
     throw Exception('Data response tidak valid.');
+  }
+
+  static bool _isResponseSuccess(Map<String, dynamic> decoded) {
+    if (decoded['success'] == true) {
+      return true;
+    }
+    final dynamic code = decoded['code'];
+    final String status = decoded['status']?.toString().toLowerCase() ?? '';
+    final bool codeOk = code == 200 || code == '200';
+    return codeOk && (status.isEmpty || status == 'success');
   }
 
   Future<Map<String, dynamic>> fetchSupermarketDashboardData() async {
