@@ -8,7 +8,7 @@ import '../widgets/bundling_registration_dialog.dart';
 import '../widgets/scanner_overlay_sheet.dart';
 import '../widgets/shell/scanner_bottom_nav_bar.dart';
 import '../widgets/shell/scanner_center_fab.dart';
-import '../widgets/shell/scanner_history_page.dart';
+import '../widgets/shell/rfid_checking_page.dart';
 import '../widgets/shell/scanner_home_page.dart';
 import '../widgets/shell/scanner_manual_input_page.dart';
 import '../widgets/shell/scanner_profile_page.dart';
@@ -283,11 +283,7 @@ class _ScannerShellPageState extends State<ScannerShellPage>
           },
         );
       case AppMenu.history:
-        return ScannerHistoryPage(
-          state: state,
-          barcodeController: _barcodeController,
-          onOpenHistoryItem: _fetchBarcode,
-        );
+        return const RfidCheckingPage();
       case AppMenu.manual:
         return ScannerManualInputPage(
           state: state,

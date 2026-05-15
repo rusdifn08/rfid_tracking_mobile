@@ -1171,6 +1171,12 @@ TrackingStationMeta trackingStationMetaOf(String mode) {
         subtitle: 'Scan RFID untuk proses Quality Control',
         icon: Icons.verified_outlined,
       );
+    case 'Quality Control Repair':
+      return const TrackingStationMeta(
+        accent: Color(0xFFEA580C),
+        subtitle: 'Scan RFID untuk proses Repair QC',
+        icon: Icons.build_circle_outlined,
+      );
     case 'Supermarket':
       return const TrackingStationMeta(
         accent: Color(0xFF059669),

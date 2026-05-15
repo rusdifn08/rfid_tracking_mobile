@@ -49,79 +49,70 @@ class _QualityControlStationPageState extends State<QualityControlStationPage> {
           totalReject: dashboard.totalReject,
         ),
         const SizedBox(height: 10),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            onPressed: () => showTrackingRfidStationDialog(
-              context,
-              'Quality Control',
-              onSubmitRfid: (payload) async {
-                final scannerState = context.read<ScannerState>();
-                final authState = context.read<AuthState>();
-                final cleanRfid = payload.rfid.trim();
-                final nik = authState.currentUser?.nik.trim() ?? '';
-                if (nik.isEmpty) {
-                  return RfidScanSubmitResult.fail(
-                    'NIK tidak tersedia. Silakan login ulang.',
-                  );
-                }
-                int qtyBundle;
-                try {
-                  qtyBundle = await scannerState.fetchQualityControlQty(
-                    rfidBundles: cleanRfid,
-                  );
-                } catch (e) {
-                  return RfidScanSubmitResult.fail(ScannerState.userFacingError(e));
-                }
-                if (qtyBundle <= 0) {
-                  return RfidScanSubmitResult.fail(
-                    'Qty output tidak ditemukan untuk RFID ini.',
-                  );
-                }
-                if (!context.mounted) {
-                  return RfidScanSubmitResult.fail('Halaman tidak aktif.');
-                }
-                final split = await _showQcSplitDialog(
-                  context,
-                  rfid: cleanRfid,
-                  baseQty: qtyBundle,
-                );
-                if (split == null) {
-                  return RfidScanSubmitResult.fail(
-                    'Pembagian qty dibatalkan.',
-                  );
-                }
-                try {
-                  await scannerState.submitQualityControlResult(
-                    rfidBundles: cleanRfid,
-                    qty: qtyBundle,
-                    good: split.good,
-                    repair: split.repair,
-                    reject: split.reject,
-                    nik: nik,
-                  );
-                  return RfidScanSubmitResult.ok(
-                    'QC tersimpan. Good ${split.good}, Repair ${split.repair}, Reject ${split.reject}.',
-                  );
-                } catch (e) {
-                  return RfidScanSubmitResult.fail(ScannerState.userFacingError(e));
-                }
-              },
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: meta.accent,
-              foregroundColor: Colors.white,
-              minimumSize: const Size.fromHeight(46),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-            ),
-            icon: const Icon(Icons.qr_code_scanner_rounded),
-            label: Text(
-              'Mulai Scanning QC',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-            ),
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final stacked = constraints.maxWidth < 340;
+            Widget qcButton({required bool expand}) {
+              final btn = FilledButton.icon(
+                onPressed: () => _openQcScanDialog(context),
+                style: FilledButton.styleFrom(
+                  backgroundColor: meta.accent,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.verified_outlined),
+                label: Text(
+                  'SCAN QC',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                ),
+              );
+              return expand
+                  ? Expanded(child: btn)
+                  : SizedBox(width: double.infinity, child: btn);
+            }
+
+            Widget repairButton({required bool expand}) {
+              final btn = FilledButton.icon(
+                onPressed: () => _openQcRepairScanDialog(context),
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFEA580C),
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(48),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
+                icon: const Icon(Icons.build_circle_outlined),
+                label: Text(
+                  'SCAN Repair',
+                  style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                ),
+              );
+              return expand
+                  ? Expanded(child: btn)
+                  : SizedBox(width: double.infinity, child: btn);
+            }
+
+            if (stacked) {
+              return Column(
+                children: [
+                  qcButton(expand: false),
+                  const SizedBox(height: 10),
+                  repairButton(expand: false),
+                ],
+              );
+            }
+            return Row(
+              children: [
+                qcButton(expand: true),
+                const SizedBox(width: 10),
+                repairButton(expand: true),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 10),
         QcHourlyChartCard(
@@ -137,6 +128,287 @@ class _QualityControlStationPageState extends State<QualityControlStationPage> {
         const SizedBox(height: 10),
         QcHistoryTableCard(items: dashboard.items),
       ],
+    );
+  }
+
+  void _openQcScanDialog(BuildContext context) {
+    showTrackingRfidStationDialog(
+      context,
+      'Quality Control',
+      onSubmitRfid: (payload) async {
+        final scannerState = context.read<ScannerState>();
+        final authState = context.read<AuthState>();
+        final cleanRfid = payload.rfid.trim();
+        final nik = authState.currentUser?.nik.trim() ?? '';
+        if (nik.isEmpty) {
+          return RfidScanSubmitResult.fail(
+            'NIK tidak tersedia. Silakan login ulang.',
+          );
+        }
+        int qtyBundle;
+        try {
+          qtyBundle = await scannerState.fetchQualityControlQty(
+            rfidBundles: cleanRfid,
+          );
+        } catch (e) {
+          return RfidScanSubmitResult.fail(ScannerState.userFacingError(e));
+        }
+        if (qtyBundle <= 0) {
+          return RfidScanSubmitResult.fail(
+            'Qty output tidak ditemukan untuk RFID ini.',
+          );
+        }
+        if (!context.mounted) {
+          return RfidScanSubmitResult.fail('Halaman tidak aktif.');
+        }
+        final split = await _showQcSplitDialog(
+          context,
+          rfid: cleanRfid,
+          baseQty: qtyBundle,
+        );
+        if (split == null) {
+          return RfidScanSubmitResult.fail('Pembagian qty dibatalkan.');
+        }
+        try {
+          await scannerState.submitQualityControlResult(
+            rfidBundles: cleanRfid,
+            qty: qtyBundle,
+            good: split.good,
+            repair: split.repair,
+            reject: split.reject,
+            nik: nik,
+          );
+          return RfidScanSubmitResult.ok(
+            'QC tersimpan. Good ${split.good}, Repair ${split.repair}, Reject ${split.reject}.',
+          );
+        } catch (e) {
+          return RfidScanSubmitResult.fail(ScannerState.userFacingError(e));
+        }
+      },
+    );
+  }
+
+  void _openQcRepairScanDialog(BuildContext context) {
+    final pageContext = context;
+    showTrackingRfidStationDialog(
+      context,
+      'Quality Control Repair',
+      onSubmitRfid: (payload) async {
+        final scannerState = pageContext.read<ScannerState>();
+        final authState = pageContext.read<AuthState>();
+        final cleanRfid = payload.rfid.trim();
+        final nik = authState.currentUser?.nik.trim() ?? '';
+        if (nik.isEmpty) {
+          return RfidScanSubmitResult.fail(
+            'NIK tidak tersedia. Silakan login ulang.',
+          );
+        }
+        int qtyRepair;
+        try {
+          qtyRepair = await scannerState.fetchQualityControlRepairQty(
+            rfidBundles: cleanRfid,
+          );
+        } catch (e) {
+          return RfidScanSubmitResult.fail(ScannerState.userFacingError(e));
+        }
+        if (!pageContext.mounted) {
+          return RfidScanSubmitResult.fail('Halaman tidak aktif.');
+        }
+        Navigator.of(pageContext, rootNavigator: true).pop();
+        final message = await _showRepairDispositionDialog(
+          pageContext,
+          rfid: cleanRfid,
+          qtyRepair: qtyRepair,
+          nik: nik,
+        );
+        if (message == null) {
+          return RfidScanSubmitResult.fail('Aksi repair dibatalkan.');
+        }
+        return RfidScanSubmitResult.ok(message);
+      },
+    );
+  }
+
+  Future<String?> _showRepairDispositionDialog(
+    BuildContext context, {
+    required String rfid,
+    required int qtyRepair,
+    required String nik,
+  }) {
+    return showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        return StatefulBuilder(
+          builder: (context, setStateDialog) {
+            Future<void> submit({required bool toGood}) async {
+              if (isSubmitting) {
+                return;
+              }
+              setStateDialog(() => isSubmitting = true);
+              try {
+                final scannerState = context.read<ScannerState>();
+                final message = toGood
+                    ? await scannerState.submitQualityControlRepairToGood(
+                        rfidBundles: rfid,
+                        qty: qtyRepair,
+                        nik: nik,
+                      )
+                    : await scannerState.submitQualityControlRepairToReject(
+                        rfidBundles: rfid,
+                        qty: qtyRepair,
+                        nik: nik,
+                      );
+                if (!dialogContext.mounted) {
+                  return;
+                }
+                Navigator.of(dialogContext).pop(message);
+              } catch (e) {
+                if (!dialogContext.mounted) {
+                  return;
+                }
+                setStateDialog(() => isSubmitting = false);
+                ScaffoldMessenger.of(dialogContext).showSnackBar(
+                  SnackBar(
+                    content: Text(ScannerState.userFacingError(e)),
+                    backgroundColor: const Color(0xFFDC2626),
+                  ),
+                );
+              }
+            }
+
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              titlePadding: const EdgeInsets.fromLTRB(20, 18, 20, 8),
+              contentPadding: const EdgeInsets.fromLTRB(20, 4, 20, 8),
+              actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+              title: Row(
+                children: [
+                  Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.build_circle_outlined,
+                      color: Color(0xFFEA580C),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Qty Repair Ditemukan',
+                      style: GoogleFonts.poppins(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 17,
+                        color: Color(0xFF0F172A),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'RFID $rfid',
+                    style: GoogleFonts.poppins(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: const Color(0xFF334155),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFF7ED),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFFED7AA)),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.info_outline,
+                          color: Color(0xFFEA580C),
+                          size: 20,
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Text(
+                            'Qty repair: $qtyRepair\nPilih tujuan konversi repair.',
+                            style: GoogleFonts.poppins(
+                              fontSize: 13,
+                              height: 1.4,
+                              color: Color(0xFF9A3412),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: isSubmitting
+                      ? null
+                      : () => Navigator.of(dialogContext).pop(),
+                  child: Text(
+                    'Batal',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: isSubmitting ? null : () => submit(toGood: false),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE11D48),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, 44),
+                  ),
+                  icon: isSubmitting
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.cancel_outlined, size: 18),
+                  label: Text(
+                    'Send To Reject',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: isSubmitting ? null : () => submit(toGood: true),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size(0, 44),
+                  ),
+                  icon: const Icon(Icons.check_circle_outline, size: 18),
+                  label: Text(
+                    'Send To Good',
+                    style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 

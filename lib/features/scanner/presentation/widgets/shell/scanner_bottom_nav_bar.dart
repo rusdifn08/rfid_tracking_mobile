@@ -36,8 +36,8 @@ class ScannerBottomNavBar extends StatelessWidget {
           ),
           _BottomItem(
             motion: motion,
-            icon: Icons.history,
-            label: 'History',
+            icon: Icons.sensors_rounded,
+            label: 'Checking',
             selected: state.activeMenu == AppMenu.history,
             onTap: () => state.setActiveMenu(AppMenu.history),
           ),

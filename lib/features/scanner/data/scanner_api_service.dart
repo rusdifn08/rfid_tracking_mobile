@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../../../core/models/rfid_checking_record.dart';
+
 class ScannerApiService {
   ScannerApiService({
     String? baseUrl,
@@ -257,6 +259,120 @@ class ScannerApiService {
     }
   }
 
+  /// GET `/api/gcc/cutting/qc/qty/repair` — qty repair by RFID bundle.
+  Future<Map<String, dynamic>> fetchQualityControlRepairQty({
+    required String rfidBundles,
+  }) async {
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/qc/qty/repair').replace(
+      queryParameters: <String, String>{
+        'rfid_bundles': rfidBundles.trim(),
+      },
+    );
+    final response = await _client.get(uri, headers: _baseHeaders);
+    final Map<String, dynamic>? decoded = _tryDecodeMap(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'GET qty repair gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+    if (!_isResponseSuccess(decoded)) {
+      throw Exception(_messageFromBody(decoded, 'Qty repair tidak ditemukan.'));
+    }
+
+    final dynamic data = decoded['data'];
+    if (data is Map<String, dynamic>) {
+      return data;
+    }
+    if (data is Map) {
+      return Map<String, dynamic>.from(data);
+    }
+    throw Exception('Data response tidak valid.');
+  }
+
+  /// POST `/api/gcc/cutting/qc/repair/good` — konversi repair ke good.
+  Future<Map<String, dynamic>> postQualityControlRepairToGood({
+    required String rfidBundles,
+    required int qty,
+    required String nik,
+  }) async {
+    return _postQualityControlRepairDisposition(
+      path: '/api/gcc/cutting/qc/repair/good',
+      rfidBundles: rfidBundles,
+      qty: qty,
+      nik: nik,
+      fallbackError: 'Konversi repair ke good gagal.',
+    );
+  }
+
+  /// POST `/api/gcc/cutting/qc/repair/reject` — konversi repair ke reject.
+  Future<Map<String, dynamic>> postQualityControlRepairToReject({
+    required String rfidBundles,
+    required int qty,
+    required String nik,
+  }) async {
+    return _postQualityControlRepairDisposition(
+      path: '/api/gcc/cutting/qc/repair/reject',
+      rfidBundles: rfidBundles,
+      qty: qty,
+      nik: nik,
+      fallbackError: 'Konversi repair ke reject gagal.',
+    );
+  }
+
+  Future<Map<String, dynamic>> _postQualityControlRepairDisposition({
+    required String path,
+    required String rfidBundles,
+    required int qty,
+    required String nik,
+    required String fallbackError,
+  }) async {
+    final uri = Uri.parse('$_baseUrl$path');
+    final response = await _client.post(
+      uri,
+      headers: <String, String>{
+        ..._baseHeaders,
+        'Content-Type': 'application/json',
+      },
+      body: jsonEncode(<String, dynamic>{
+        'rfid_bundles': rfidBundles.trim(),
+        'qty': qty,
+        'nik': nik.trim(),
+      }),
+    );
+
+    final Map<String, dynamic>? decoded = _tryDecodeMap(response.body);
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          '$fallbackError (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+    if (!_isResponseSuccess(decoded)) {
+      throw Exception(_messageFromBody(decoded, fallbackError));
+    }
+
+    final dynamic data = decoded['data'];
+    final Map<String, dynamic> payload = data is Map<String, dynamic>
+        ? Map<String, dynamic>.from(data)
+        : data is Map
+        ? Map<String, dynamic>.from(data)
+        : <String, dynamic>{};
+    payload['message'] = _messageFromBody(decoded, fallbackError);
+    return payload;
+  }
+
   /// POST `/api/gcc/cutting/smarket` untuk proses supermarket in/out/urgent.
   Future<Map<String, dynamic>> postSupermarketScan({
     required String nik,
@@ -351,6 +467,60 @@ class ScannerApiService {
       return Map<String, dynamic>.from(data);
     }
     return decoded;
+  }
+
+  /// GET `/api/gcc/cutting/check` — riwayat tracking RFID bundle.
+  Future<RfidCheckingApiResponse> fetchRfidChecking({
+    required String rfidBundles,
+  }) async {
+    final clean = rfidBundles.trim();
+    if (clean.isEmpty) {
+      throw Exception('RFID bundle wajib diisi.');
+    }
+    final uri = Uri.parse('$_baseUrl/api/gcc/cutting/check').replace(
+      queryParameters: <String, String>{'rfid_bundles': clean},
+    );
+    final response = await _client.get(uri, headers: _baseHeaders);
+    final decoded = _tryDecodeMap(response.body);
+
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception(
+        _messageFromBody(
+          decoded,
+          'GET checking RFID gagal (HTTP ${response.statusCode}).',
+        ),
+      );
+    }
+    if (decoded == null) {
+      throw Exception('Response tidak valid.');
+    }
+    if (!_isResponseSuccess(decoded)) {
+      throw Exception(
+        _messageFromBody(decoded, 'Checking RFID gagal.'),
+      );
+    }
+
+    final message = _messageFromBody(
+      decoded,
+      'Data checking berhasil ditampilkan.',
+    );
+    final countRaw = decoded['count'];
+    final count = countRaw is int
+        ? countRaw
+        : int.tryParse(countRaw?.toString() ?? '') ?? 0;
+
+    final dataRaw = decoded['data'];
+    final list = dataRaw is List ? dataRaw : const <dynamic>[];
+    final records = list
+        .whereType<Map>()
+        .map((e) => RfidCheckingRecord.fromJson(Map<String, dynamic>.from(e)))
+        .toList(growable: false);
+
+    return RfidCheckingApiResponse(
+      message: message,
+      count: count > 0 ? count : records.length,
+      records: records,
+    );
   }
 
   Future<Map<String, dynamic>> fetchQualityControlDashboardData() async {

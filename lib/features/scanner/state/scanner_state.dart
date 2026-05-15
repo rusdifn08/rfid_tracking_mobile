@@ -614,6 +614,71 @@ class ScannerState extends ChangeNotifier {
     unawaited(fetchQualityControlDashboard());
   }
 
+  Future<int> fetchQualityControlRepairQty({required String rfidBundles}) async {
+    final cleanRfid = rfidBundles.trim();
+    if (cleanRfid.isEmpty) {
+      throw Exception('RFID bundle wajib diisi.');
+    }
+    final data = await _apiService.fetchQualityControlRepairQty(
+      rfidBundles: cleanRfid,
+    );
+    final rawQty = data['qty_repair'];
+    final qty = rawQty is int
+        ? rawQty
+        : int.tryParse(rawQty?.toString().trim() ?? '');
+    if (qty == null || qty < 1) {
+      throw Exception('Qty repair tidak tersedia untuk RFID ini.');
+    }
+    return qty;
+  }
+
+  Future<String> submitQualityControlRepairToGood({
+    required String rfidBundles,
+    required int qty,
+    required String nik,
+  }) async {
+    final data = await _apiService.postQualityControlRepairToGood(
+      rfidBundles: rfidBundles,
+      qty: qty,
+      nik: nik,
+    );
+    notifyListeners();
+    unawaited(fetchQualityControlDashboard());
+    return _messageFromRepairResponse(
+      data,
+      'Repair berhasil dikonversi menjadi good.',
+    );
+  }
+
+  Future<String> submitQualityControlRepairToReject({
+    required String rfidBundles,
+    required int qty,
+    required String nik,
+  }) async {
+    final data = await _apiService.postQualityControlRepairToReject(
+      rfidBundles: rfidBundles,
+      qty: qty,
+      nik: nik,
+    );
+    notifyListeners();
+    unawaited(fetchQualityControlDashboard());
+    return _messageFromRepairResponse(
+      data,
+      'Repair berhasil dikonversi menjadi reject.',
+    );
+  }
+
+  String _messageFromRepairResponse(
+    Map<String, dynamic> data,
+    String fallback,
+  ) {
+    final msg = data['message']?.toString().trim();
+    if (msg != null && msg.isNotEmpty) {
+      return msg;
+    }
+    return fallback;
+  }
+
   bool addSupermarketScan({
     required String rfid,
     String workOrder = 'LIVE-SUPERMARKET',

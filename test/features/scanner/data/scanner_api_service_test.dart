@@ -475,6 +475,115 @@ void main() {
       expect(items.first['last_status'], 'IN_SMARKET');
     });
 
+    test('fetchQualityControlRepairQty parse qty_repair', () async {
+      late Uri capturedUri;
+      final client = MockClient((http.Request request) async {
+        capturedUri = request.url;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'Qty repair berhasil ditemukan.',
+            'data': <String, dynamic>{
+              'rfid_bundles': '0013468151',
+              'qty_repair': 2,
+            },
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      final data = await service.fetchQualityControlRepairQty(
+        rfidBundles: '0013468151',
+      );
+      expect(capturedUri.path, '/api/gcc/cutting/qc/qty/repair');
+      expect(capturedUri.queryParameters['rfid_bundles'], '0013468151');
+      expect(data['qty_repair'], 2);
+    });
+
+    test('postQualityControlRepairToGood mengirim body rfid qty nik', () async {
+      late Map<String, dynamic> capturedBody;
+      final client = MockClient((http.Request request) async {
+        capturedBody = jsonDecode(request.body) as Map<String, dynamic>;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'Repair berhasil dikonversi menjadi good.',
+            'data': <String, dynamic>{'last_status': 'REPAIR_GOOD'},
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      final data = await service.postQualityControlRepairToGood(
+        rfidBundles: '0013468151',
+        qty: 2,
+        nik: '92300014',
+      );
+      expect(capturedBody['rfid_bundles'], '0013468151');
+      expect(capturedBody['qty'], 2);
+      expect(capturedBody['nik'], '92300014');
+      expect(data['message'], contains('good'));
+    });
+
+    test('fetchRfidChecking parse data array dari API check', () async {
+      late Uri capturedUri;
+      final client = MockClient((http.Request request) async {
+        capturedUri = request.url;
+        return http.Response(
+          jsonEncode(<String, dynamic>{
+            'code': 200,
+            'status': 'success',
+            'message': 'Data checking card berhasil ditampilkan.',
+            'count': 2,
+            'data': <Map<String, dynamic>>[
+              <String, dynamic>{
+                'id': 1205,
+                'last_status': 'OUT_SMARKET',
+                'qty_batch': 24,
+                'batch': 'ALL',
+                'log_created_at': '2026-05-15T08:30:00',
+                'barcode': 'BD20260505-566963',
+                'rfid_bundles': '0007729979',
+                'wo': 'WO-001',
+                'style': 'STYLE-001',
+                'meja': 'M01',
+                'warna': 'BLACK',
+                'size': 'L',
+                'no_ikat': 12,
+                'no_urut': '001',
+                'season': 'SS26',
+                'country': 'USA',
+              },
+            ],
+          }),
+          200,
+        );
+      });
+      final service = ScannerApiService(
+        baseUrl: 'http://example.test',
+        client: client,
+      );
+
+      final result = await service.fetchRfidChecking(rfidBundles: '0007729979');
+
+      expect(capturedUri.path, '/api/gcc/cutting/check');
+      expect(capturedUri.queryParameters['rfid_bundles'], '0007729979');
+      expect(result.found, isTrue);
+      expect(result.records.first.rfidBundles, '0007729979');
+      expect(result.records.first.lastStatus, 'OUT_SMARKET');
+      expect(result.message, contains('berhasil'));
+    });
+
     test('fetchQualityControlDashboardData parse summary/per-jam/items', () async {
       final client = MockClient((http.Request request) async {
         expect(request.method, 'GET');
